@@ -1,6 +1,6 @@
 import nest_asyncio
 nest_asyncio.apply()
-
+ 
 import os
 import logging
 from collections import Counter
@@ -36,10 +36,10 @@ if not VOTING_CHAT:
 persistence = PicklePersistence(filepath="bot_data.pkl")
 
 # Состояния для ConversationHandler
-ROOM_SELECTION, SLOT_SELECTION, ENTER_BOOKING_NAME = range(3)
+ROOM_SELECTION, SLOT_SELECTION = range(2)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-     # Функция start без изменений
+    # Функция start без изменений
     bot = context.bot
     bot_username = (await bot.get_me()).username
     chat = update.effective_chat
@@ -49,7 +49,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if chat_type == 'private':
         user_id = chat.id
         if context.args and context.args[0].startswith("vote_"):
-             # Извлекаем chat_id и message_thread_id
+            # Извлекаем chat_id и message_thread_id
             arg = context.args[0][5:]  # Убираем 'vote_'
             if '_' in arg:
                 source_chat_id_str, thread_id_str = arg.split('_', 1)
@@ -140,7 +140,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if booked_slots:
         booked_info = "\n<b>Забронированные слоты:</b>\n"
         for room, slots in booked_slots.items():
-            slots_str = ', '.join(f"{slot} ({name})" for slot, name in slots.items())
+            slots_str = ', '.join(str(s) for s in slots)
             booked_info += f"{room}: слоты {slots_str}\n"
         admin_message += booked_info
 
@@ -154,7 +154,7 @@ async def name_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Функция name_rooms без изменений
     user_data = context.user_data
     user_data.clear()
-    user_data['awaiting_room_names'] = True # Устанавливаем флаг для текущей команды
+    user_data['awaiting_room_names'] = True  # Устанавливаем флаг для текущей команды
     await update.message.reply_text(
         text="Введите названия залов, разделяя их точкой с запятой (;). Например:\n'Основной зал; Малая аудитория; Зал для дискуссий'"
     )
@@ -172,7 +172,7 @@ async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(
         text=f"Названия залов установлены: {', '.join(room_names)}"
     )
-    user_data['awaiting_room_names'] = False # Сбрасываем флаг
+    user_data['awaiting_room_names'] = False  # Сбрасываем флаг
 
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
@@ -236,6 +236,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     selected_data = query.data
     user_data = context.user_data
+    bot = context.bot
 
     if selected_data == "submit_votes":
         # Обработка отправки голосов
@@ -370,7 +371,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     num_rooms = context.bot_data.get('num_rooms', 3)
     num_slots = context.bot_data.get('num_slots', 4)
-    room_names = context.bot_data.get('room_names', [f"Зал {i + 1}" for i in range(num_rooms)])
+    room_names = context.bot_data.get('room_names', [f"Зал {i +1}" for i in range(num_rooms)])
     booked_slots = context.bot_data.get('booked_slots', {})
 
     all_votes = []
@@ -378,8 +379,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     for votes in votes_data.values():
         all_votes.extend(votes)
     if not all_votes:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+        await update.message.reply_text(
             text="Нет голосов для обработки.",
             message_thread_id=message_thread_id
         )
@@ -396,12 +396,12 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     topic_index = 0
     scheduled_topics = set()
     for room_index in range(num_rooms):
-        room_name = room_names[room_index] if room_index < len(room_names) else f"Зал {room_index + 1}"
+        room_name = room_names[room_index] if room_index < len(room_names) else f"Зал {room_index +1}"
         schedule[room_name] = []
         for slot_index in range(num_slots):
             # Проверяем, забронирован ли этот слот
             if room_name in booked_slots and slot_index + 1 in booked_slots[room_name]:
-                schedule[room_name].append(booked_slots[room_name][slot_index + 1])
+                schedule[room_name].append("Забронировано")
             elif topic_index < len(sorted_topics):
                 topic = sorted_topics[topic_index]
                 schedule[room_name].append(topic)
@@ -415,7 +415,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         schedule_text += f"<b>{room_name}</b>\n"
         topics_in_room = schedule[room_name]
         for slot_num, topic in enumerate(topics_in_room):
-            schedule_text += f"<b>Слот {slot_num + 1}:</b> {topic}\n"
+            schedule_text += f"<b>Слот {slot_num +1}:</b> {topic}\n"
         schedule_text += "\n"
 
     # Определяем темы, не попавшие в расписание
@@ -435,8 +435,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if unscheduled_text:
         final_message += f"\n{unscheduled_text}"
 
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
+    await update.message.reply_text(
         text=final_message,
         parse_mode='HTML',
         message_thread_id=message_thread_id
@@ -663,31 +662,27 @@ async def book_slot_slot_selection(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
     selected_slot = int(query.data)
-    selected_room = context.user_data['selected_room']
-    context.user_data['selected_slot'] = selected_slot
+    selected_room = context.user_data.get('selected_room')
 
-    await query.edit_message_text(f"Вы выбрали слот {selected_slot} в {selected_room}. Пожалуйста, введите название темы для бронирования:")
-    return ENTER_BOOKING_NAME
-
-async def enter_booking_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    booking_name = update.message.text
-    selected_room = context.user_data['selected_room']
-    selected_slot = context.user_data['selected_slot']
-
+    # Записываем забронированный слот
     booked_slots = context.bot_data.get('booked_slots', {})
     if selected_room not in booked_slots:
-        booked_slots[selected_room] = {}
-    booked_slots[selected_room][selected_slot] = booking_name
-    context.bot_data['booked_slots'] = booked_slots
+        booked_slots[selected_room] = []
+    if selected_slot not in booked_slots[selected_room]:
+        booked_slots[selected_room].append(selected_slot)
+        context.bot_data['booked_slots'] = booked_slots
 
-    await update.message.reply_text(f"Вы успешно забронировали слот {selected_slot} в {selected_room} с темой: {booking_name}.")
+        await query.edit_message_text(f"Вы успешно забронировали слот {selected_slot} в {selected_room}.")
+    else:
+        await query.edit_message_text(f"Слот {selected_slot} в {selected_room} уже забронирован.")
 
+    # Показываем список всех забронированных слотов
     booked_info = "<b>Забронированные слоты:</b>\n"
     for room, slots in booked_slots.items():
-        slots_str = ', '.join(f"{slot} ({name})" for slot, name in slots.items())
+        slots_str = ', '.join(str(s) for s in slots)
         booked_info += f"<b>{room}:</b> слоты {slots_str}\n"
 
-    await update.message.reply_text(booked_info, parse_mode='HTML')
+    await update.effective_chat.send_message(booked_info, parse_mode='HTML')
 
     return ConversationHandler.END
 
@@ -724,7 +719,6 @@ def main() -> None:
         states={
             ROOM_SELECTION: [CallbackQueryHandler(book_slot_room_selection)],
             SLOT_SELECTION: [CallbackQueryHandler(book_slot_slot_selection)],
-            ENTER_BOOKING_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_booking_name)],
         },
         fallbacks=[CommandHandler('cancel', book_slot_cancel)],
         name="book_slot_conv",
