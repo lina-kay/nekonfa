@@ -9,11 +9,9 @@ from telegram.ext import (
 )
 from telegram.error import BadRequest
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Чтение токена бота и ссылок из переменных окружения
 TOKEN = os.getenv('TOKEN', 'YOUR_BOT_TOKEN')  # Ваш токен бота
 TOPICS_CHAT = os.getenv('TOPICS_CHAT', 'YOUR_TOPICS_CHAT_LINK')  # Ссылка на чат с темами
 VOTING_CHAT = os.getenv('VOTING_CHAT', 'YOUR_VOTING_CHAT_LINK')  # Ссылка на чат для голосования
@@ -24,8 +22,7 @@ if not TOKEN or not TOPICS_CHAT or not VOTING_CHAT:
 
 persistence = PicklePersistence(filepath="bot_data.pkl")
 
-# Состояния для ConversationHandler
-ROOM_SELECTION, SLOT_SELECTION, TOPIC_ENTRY = range(3)  # Значения: 0, 1, 2
+ROOM_SELECTION, SLOT_SELECTION, TOPIC_ENTRY = range(3)
 
 def convert_booked_slots(bot_data):
     booked_slots = bot_data.get('booked_slots', {})
@@ -36,13 +33,11 @@ def convert_booked_slots(bot_data):
 
     for room, slots in list(booked_slots.items()):
         if isinstance(slots, list):
-            # Если слоты представлены списком, преобразуем их в словарь
             new_slots = {}
             for slot_num in slots:
                 new_slots[int(slot_num)] = {'topic': 'Забронировано'}
             booked_slots[room] = new_slots
         elif isinstance(slots, dict):
-            # Убеждаемся, что ключи слотов — целые числа
             new_slots = {}
             for slot_num, slot_data in slots.items():
                 try:
@@ -52,8 +47,8 @@ def convert_booked_slots(bot_data):
                     continue
             booked_slots[room] = new_slots
         else:
-            # Если формат слотов неизвестен, удаляем запись для этой комнаты
             del booked_slots[room]
+
     bot_data['booked_slots'] = booked_slots
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -195,7 +190,7 @@ async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_data['awaiting_room_names'] = False
 
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     command = update.message.text.strip().lower()
     if command == '/vote':
         if str(user_id) in context.bot_data.get("votes", {}):
@@ -291,7 +286,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await query.answer("Вы не выбрали ни одной темы для удаления.", show_alert=True)
             return
         topics = context.bot_data.get("topics", [])
-        # Удаляем выбранные темы
         for topic in user_data['remove_selection']:
             if topic in topics:
                 topics.remove(topic)
@@ -380,6 +374,18 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     room_names = context.bot_data.get('room_names', [f"Зал {i + 1}" for i in range(num_rooms)])
     booked_slots = context.bot_data.get('booked_slots', {})
 
+    # Преобразуем ключи слотов в целые числа
+    for room_name, room_bookings in booked_slots.items():
+        if isinstance(room_bookings, dict):
+            new_room_bookings = {}
+            for slot_num, slot_data in room_bookings.items():
+                try:
+                    slot_num_int = int(slot_num)
+                    new_room_bookings[slot_num_int] = slot_data
+                except ValueError:
+                    continue
+            booked_slots[room_name] = new_room_bookings
+
     votes_data = context.bot_data.get("votes", {})
     num_voters = len(votes_data)
 
@@ -387,7 +393,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     for votes in votes_data.values():
         all_votes.extend(votes)
     if not all_votes:
-        await update.message.reply_text(
+        await context.bot.send_message(
             text="Нет голосов для обработки.",
             message_thread_id=message_thread_id
         )
@@ -412,13 +418,13 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if room_name in booked_slots:
                 room_bookings = booked_slots[room_name]
                 if isinstance(room_bookings, dict):
-                    if slot_number in room_bookings:
-                        topic_title = room_bookings[slot_number].get('topic', 'Забронировано')
+                    if slot_number in room_bookings or str(slot_number) in room_bookings:
+                        booking = room_bookings.get(slot_number) or room_bookings.get(str(slot_number))
+                        topic_title = booking.get('topic', 'Забронировано')
                         schedule[room_name].append(topic_title)
-                        scheduled_topics.add(topic_title)  # Добавляем забронированную тему в множество
+                        scheduled_topics.add(topic_title)
                         topic_assigned = True
             if not topic_assigned:
-                # Пропускаем уже расписанные темы
                 while topic_index < len(sorted_topics) and sorted_topics[topic_index] in scheduled_topics:
                     topic_index += 1
                 if topic_index < len(sorted_topics):
@@ -437,7 +443,6 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             schedule_text += f"<b>Слот {slot_num + 1}:</b> {topic}\n"
         schedule_text += "\n"
 
-    # Определяем темы, не попавшие в расписание
     unscheduled_topics = [topic for topic in sorted_topics if topic not in scheduled_topics]
     if unscheduled_topics:
         unscheduled_vote_counts = [(topic, vote_count[topic]) for topic in unscheduled_topics]
@@ -452,7 +457,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if unscheduled_text:
         final_message += f"\n{unscheduled_text}"
 
-    await update.message.reply_text(
+    await context.bot.send_message(
         text=final_message,
         parse_mode='HTML',
         message_thread_id=message_thread_id
@@ -620,9 +625,8 @@ async def secret(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         message_lines = [f"Количество проголосовавших: {num_voters}\n"]
         for user_id, votes in votes_data.items():
             try:
-                # Используем get_chat_member для получения информации о пользователе
                 user = await context.bot.get_chat_member(chat_id=update.effective_chat.id, user_id=int(user_id))
-                username = user.user.full_name or user.user.username or f"ID: {user_id}"
+                username = user.user.username or user.user.full_name or f"ID: {user_id}"
             except Exception as e:
                 logger.error(f"Ошибка при получении информации о пользователе {user_id}: {e}")
                 username = f"ID: {user_id}"
@@ -636,14 +640,11 @@ async def secret(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error(msg="Произошла ошибка:", exc_info=context.error)
 
-    # Отправка сообщения об ошибке пользователю
     if update and hasattr(update, "message") and update.message:
         try:
             await update.message.reply_text("Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте ещё раз.")
         except Exception:
             pass
-
-# Функции для бронирования и редактирования слотов
 
 async def book_slot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data = context.user_data
@@ -715,7 +716,6 @@ async def book_slot_topic_entry(update: Update, context: ContextTypes.DEFAULT_TY
 
     await update.message.reply_text(f"Вы успешно забронировали слот {selected_slot} в {selected_room} с темой: {topic_title}")
 
-    # Показываем список всех забронированных слотов
     booked_slots = bot_data['booked_slots']
     booked_info = "<b>Забронированные слоты:</b>\n"
     for room, slots in booked_slots.items():
@@ -817,7 +817,6 @@ async def edit_booking_topic_entry(update: Update, context: ContextTypes.DEFAULT
     selected_room = user_data['selected_room']
     selected_slot = user_data['selected_slot']
 
-    # Проверка существования слота
     booked_slots = bot_data.get('booked_slots', {})
     room_slots = booked_slots.get(selected_room, {})
 
@@ -833,10 +832,8 @@ async def edit_booking_topic_entry(update: Update, context: ContextTypes.DEFAULT
 def main() -> None:
     application = ApplicationBuilder().token(TOKEN).persistence(persistence).build()
 
-    # Преобразуем старые данные бронирования
     convert_booked_slots(application.bot_data)
 
-    # Регистрация обработчиков команд
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('admin', admin))
     application.add_handler(CommandHandler('namerooms', name_rooms))
@@ -856,7 +853,6 @@ def main() -> None:
     application.add_handler(CommandHandler('topiclist', topic_list))
     application.add_handler(CommandHandler('secret', secret))
 
-    # Регистрация ConversationHandler до общего CallbackQueryHandler
     book_slot_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('bookslot', book_slot_start)],
         states={
@@ -883,13 +879,10 @@ def main() -> None:
     )
     application.add_handler(edit_booking_conv_handler)
 
-    # Общий CallbackQueryHandler
     application.add_handler(CallbackQueryHandler(button, pattern='^(submit_votes|changevote|submit_remove|cancel_remove|rem_.*|^\d+$)'))
 
-    # Обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_message))
 
-    # Обработчик ошибок
     application.add_error_handler(error_handler)
 
     logger.info("Запуск бота.")
