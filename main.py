@@ -185,7 +185,7 @@ async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_data['awaiting_room_names'] = False
 
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     command = update.message.text.strip().lower()
     if command == '/vote':
         if str(user_id) in context.bot_data.get("votes", {}):
@@ -362,6 +362,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         await query.answer("Неверный выбор.", show_alert=True)
 
+# Здесь идет исправленная функция finalize_votes
+
 async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     message_thread_id = update.message.message_thread_id if update.message else None
@@ -419,7 +421,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Начинаем составление расписания
     schedule = {}
     topic_index = 0
-    scheduled_topics = set(booked_topics)  # Инициализируем с забронированными темами
+    scheduled_topics = set(booked_topics)  # Начинаем с забронированных тем
 
     # Получаем отсортированный список тем для распределения (исключая забронированные темы)
     sorted_topics = [topic for topic, _ in sorted_vote_count if topic not in scheduled_topics]
@@ -482,7 +484,8 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         message_thread_id=message_thread_id
     )
 
-# Остальные функции остаются без изменений (process_message, set_rooms, set_slots, set_votes, add_topic, receive_topic, done_adding_topics, remove_topic, clear_votes, clear_topics, clear_bookings, count_votes, topic_list, secret, error_handler, функции для бронирования и редактирования слотов)
+# Остальные функции остаются без изменений
+# Включите все функции, которые были ранее, без изменений
 
 # Регистрация обработчиков и запуск бота
 
