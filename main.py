@@ -255,7 +255,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
             return_keyboard = [
                 [InlineKeyboardButton("Переголосовать", callback_data="changevote")],
-                [InlineKeyboardButton("Вернуться к голосованию", url=VOTING_CHAT)]
+                [InlineKeyboardButton("Вернуться в чат", url=VOTING_CHAT)]
             ]
             reply_markup = InlineKeyboardMarkup(return_keyboard)
             await query.edit_message_text(
@@ -418,11 +418,16 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             schedule_text += f"<b>Слот {slot_num +1}:</b> {topic}\n"
         schedule_text += "\n"
 
+    # Определяем темы, не попавшие в расписание
     unscheduled_topics = [topic for topic in sorted_topics if topic not in scheduled_topics]
     if unscheduled_topics:
+        # Сортируем оставшиеся темы по возрастанию количества голосов
+        unscheduled_vote_counts = [(topic, vote_count[topic]) for topic in unscheduled_topics]
+        unscheduled_vote_counts.sort(key=lambda x: x[1])  # Сортируем по количеству голосов
+
         unscheduled_text = "<b>Темы вне расписания:</b>\n"
-        for topic in unscheduled_topics:
-            unscheduled_text += f"• {topic}\n"
+        for topic, count in unscheduled_vote_counts:
+            unscheduled_text += f"• {topic} - {count} голос(ов)\n"
     else:
         unscheduled_text = ""
 
