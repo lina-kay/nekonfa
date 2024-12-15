@@ -14,9 +14,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Чтение токена бота и ссылок из переменных окружения
-TOKEN = os.getenv('TOKEN')  # Ваш токен бота
-TOPICS_CHAT = os.getenv('TOPICS_CHAT')  # Ссылка на чат с темами
-VOTING_CHAT = os.getenv('VOTING_CHAT')  # Ссылка на чат для голосования
+TOKEN = os.getenv('TOKEN', 'YOUR_BOT_TOKEN')  # Ваш токен бота
+TOPICS_CHAT = os.getenv('TOPICS_CHAT', 'YOUR_TOPICS_CHAT_LINK')  # Ссылка на чат с темами
+VOTING_CHAT = os.getenv('VOTING_CHAT', 'YOUR_VOTING_CHAT_LINK')  # Ссылка на чат для голосования
 
 if not TOKEN or not TOPICS_CHAT or not VOTING_CHAT:
     logger.error("Необходимо установить переменные окружения TOKEN, TOPICS_CHAT и VOTING_CHAT.")
@@ -45,10 +45,14 @@ def convert_booked_slots(bot_data):
             # Убеждаемся, что ключи слотов — целые числа
             new_slots = {}
             for slot_num, slot_data in slots.items():
-                new_slots[int(slot_num)] = slot_data
+                try:
+                    slot_num_int = int(slot_num)
+                    new_slots[slot_num_int] = slot_data
+                except ValueError:
+                    continue
             booked_slots[room] = new_slots
         else:
-            # Если формат неизвестен, удаляем записи для этой комнаты
+            # Если формат слотов неизвестен, удаляем запись для этой комнаты
             del booked_slots[room]
     bot_data['booked_slots'] = booked_slots
 
@@ -149,9 +153,15 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         booked_info = "\n<b>Забронированные слоты:</b>\n"
         for room, slots in booked_slots.items():
             slots_info = []
-            for slot_num, slot_data in slots.items():
-                topic_title = slot_data.get('topic', 'Забронировано')
-                slots_info.append(f"Слот {slot_num}: {topic_title}")
+            if isinstance(slots, dict):
+                for slot_num, slot_data in slots.items():
+                    topic_title = slot_data.get('topic', 'Забронировано')
+                    slots_info.append(f"Слот {slot_num}: {topic_title}")
+            elif isinstance(slots, list):
+                for slot_num in slots:
+                    slots_info.append(f"Слот {slot_num}: Забронировано")
+            else:
+                slots_info.append("Неизвестный формат данных")
             slots_str = '; '.join(slots_info)
             booked_info += f"{room}: {slots_str}\n"
         admin_message += booked_info
@@ -185,7 +195,7 @@ async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_data['awaiting_room_names'] = False
 
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     command = update.message.text.strip().lower()
     if command == '/vote':
         if str(user_id) in context.bot_data.get("votes", {}):
@@ -822,6 +832,7 @@ async def edit_booking_topic_entry(update: Update, context: ContextTypes.DEFAULT
 def main() -> None:
     application = ApplicationBuilder().token(TOKEN).persistence(persistence).build()
 
+    # Преобразуем старые данные бронирования
     convert_booked_slots(application.bot_data)
 
     # Регистрация обработчиков команд
@@ -843,7 +854,6 @@ def main() -> None:
     application.add_handler(CommandHandler('countvotes', count_votes))
     application.add_handler(CommandHandler('topiclist', topic_list))
     application.add_handler(CommandHandler('secret', secret))
-    # Не добавляем CommandHandler для 'editbooking', так как он зарегистрирован в ConversationHandler
 
     # Регистрация ConversationHandler до общего CallbackQueryHandler
     book_slot_conv_handler = ConversationHandler(
