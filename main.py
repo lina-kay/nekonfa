@@ -401,7 +401,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         for slot_index in range(num_slots):
             # Проверяем, забронирован ли этот слот
             if room_name in booked_slots and slot_index + 1 in booked_slots[room_name]:
-                schedule[room_name].append("Забронировано")
+                schedule[room_name].append("Игра в Триумвират")
             elif topic_index < len(sorted_topics):
                 topic = sorted_topics[topic_index]
                 schedule[room_name].append(topic)
