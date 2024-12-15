@@ -1,4 +1,3 @@
-№кажется финальная версия но это не факт
 import nest_asyncio
 nest_asyncio.apply()
 
