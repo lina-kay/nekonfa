@@ -368,7 +368,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
-    message_thread_id = update.effective_message.message_thread_id if update.message else None
+    message_thread_id = update.message.message_thread_id if update.message else None
 
     num_rooms = context.bot_data.get('num_rooms', 3)
     num_slots = context.bot_data.get('num_slots', 4)
@@ -376,16 +376,20 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     booked_slots = context.bot_data.get('booked_slots', {})
 
     # Преобразуем ключи слотов в целые числа
-    for room_name, room_bookings in booked_slots.items():
-        if isinstance(room_bookings, dict):
-            new_room_bookings = {}
-            for slot_num, slot_data in room_bookings.items():
-                try:
+    def ensure_int_keys(booked_slots):
+        new_booked_slots = {}
+        for room_name, room_bookings in booked_slots.items():
+            if isinstance(room_bookings, dict):
+                new_room_bookings = {}
+                for slot_num, slot_data in room_bookings.items():
                     slot_num_int = int(slot_num)
                     new_room_bookings[slot_num_int] = slot_data
-                except ValueError:
-                    continue
-            booked_slots[room_name] = new_room_bookings
+                new_booked_slots[room_name] = new_room_bookings
+        return new_booked_slots
+
+    booked_slots = ensure_int_keys(booked_slots)
+
+    logger.info(f"Забронированные слоты после преобразования ключей: {booked_slots}")
 
     votes_data = context.bot_data.get("votes", {})
     num_voters = len(votes_data)
@@ -404,7 +408,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     sorted_vote_count = vote_count.most_common()
 
     vote_stats = f"<b>Статистика голосования:</b>\n"
-    vote_stats += f"<b>Проголосовало пользователей:</b> {num_voters}\n"
+    vote_stats += f"<b>Проголосовало пользователей:</b> {num_voters}\n\n"
     vote_stats += "\n".join([f"• {topic} - {count} голос(ов)" for topic, count in sorted_vote_count])
     sorted_topics = [topic for topic, _ in sorted_vote_count]
 
@@ -420,23 +424,28 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if room_name in booked_slots:
                 room_bookings = booked_slots[room_name]
                 if isinstance(room_bookings, dict):
-                    if slot_number in room_bookings or str(slot_number) in room_bookings:
-                        booking = room_bookings.get(slot_number) or room_bookings.get(str(slot_number))
+                    if slot_number in room_bookings:
+                        booking = room_bookings[slot_number]
                         topic_title = booking.get('topic', 'Забронировано')
                         schedule[room_name].append(topic_title)
                         scheduled_topics.add(topic_title)
+                        logger.info(f"Забронированный слот: {room_name} - Слот {slot_number} - Тема '{topic_title}'")
                         topic_assigned = True
             if not topic_assigned:
+                # Пропускаем уже расписанные темы
                 while topic_index < len(sorted_topics) and sorted_topics[topic_index] in scheduled_topics:
                     topic_index += 1
                 if topic_index < len(sorted_topics):
                     topic = sorted_topics[topic_index]
                     schedule[room_name].append(topic)
                     scheduled_topics.add(topic)
+                    logger.info(f"Назначена тема: {room_name} - Слот {slot_number} - Тема '{topic}'")
                     topic_index += 1
                 else:
                     schedule[room_name].append("Пусто")
+                    logger.info(f"Слот пуст: {room_name} - Слот {slot_number}")
 
+    # Формируем текст расписания
     schedule_text = "<b>Распределение тем:</b>\n\n"
     for room_name in schedule:
         schedule_text += f"<b><u>{room_name}</u></b>\n"
@@ -445,6 +454,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             schedule_text += f"<b>Слот {slot_num + 1}:</b> {topic}\n"
         schedule_text += "\n"
 
+    # Определяем темы, не попавшие в расписание
     unscheduled_topics = [topic for topic in sorted_topics if topic not in scheduled_topics]
     if unscheduled_topics:
         unscheduled_vote_counts = [(topic, vote_count[topic]) for topic in unscheduled_topics]
