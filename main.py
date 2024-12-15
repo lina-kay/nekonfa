@@ -195,7 +195,7 @@ async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_data['awaiting_room_names'] = False
 
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
+    user_id = update.message.from_user.id
     command = update.message.text.strip().lower()
     if command == '/vote':
         if str(user_id) in context.bot_data.get("votes", {}):
@@ -415,6 +415,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     if slot_number in room_bookings:
                         topic_title = room_bookings[slot_number].get('topic', 'Забронировано')
                         schedule[room_name].append(topic_title)
+                        scheduled_topics.add(topic_title)  # Добавляем забронированную тему в множество
                         topic_assigned = True
             if not topic_assigned:
                 # Пропускаем уже расписанные темы
