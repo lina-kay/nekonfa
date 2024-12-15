@@ -367,7 +367,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await query.answer("Неверный выбор.", show_alert=True)
 
 async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message_thread_id = update.message.message_thread_id if update.message else None
+    chat_id = update.effective_chat.id
+    message_thread_id = update.effective_message.message_thread_id if update.message else None
 
     num_rooms = context.bot_data.get('num_rooms', 3)
     num_slots = context.bot_data.get('num_slots', 4)
@@ -394,6 +395,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         all_votes.extend(votes)
     if not all_votes:
         await context.bot.send_message(
+            chat_id=chat_id,
             text="Нет голосов для обработки.",
             message_thread_id=message_thread_id
         )
@@ -458,6 +460,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         final_message += f"\n{unscheduled_text}"
 
     await context.bot.send_message(
+        chat_id=chat_id,
         text=final_message,
         parse_mode='HTML',
         message_thread_id=message_thread_id
@@ -642,7 +645,11 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if update and hasattr(update, "message") and update.message:
         try:
-            await update.message.reply_text("Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте ещё раз.")
+            chat_id = update.effective_chat.id
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте ещё раз."
+            )
         except Exception:
             pass
 
