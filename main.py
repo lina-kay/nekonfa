@@ -503,7 +503,21 @@ async def receive_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     category = context.user_data.get('category', 'Не определено')
     topic = f"{name}: {category}. {update.message.text.strip()}"
     context.bot_data["topics"] = context.bot_data.get("topics", []) + [topic]
-    await update.message.reply_text(f"Тема добавлена:\n{topic}", reply_markup=ReplyKeyboardRemove())
+    
+    bot_username = (await context.bot.get_me()).username
+    vote_url = f"https://t.me/{bot_username}?start=vote"
+    add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
+    
+    keyboard = [
+        [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
+        [InlineKeyboardButton("Добавить еще тему", url=add_topic_url)]
+    ]
+    
+    await update.message.reply_text(
+        f"Тема добавлена:\n<code>{topic}</code>",
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
     return ConversationHandler.END
 
 async def cancel_add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
