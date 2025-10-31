@@ -1,5 +1,12 @@
+# Core Telegram bot framework
 python-telegram-bot==21.4
 
+# Optional helper (only needed if you still import it)
+nest_asyncio
+
+# Standard dependencies for cloud hosting stability
 certifi
 urllib3
 
+# Logging and runtime utilities (safe defaults)
+aiohttp
