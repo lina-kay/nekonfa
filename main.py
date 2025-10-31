@@ -85,7 +85,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         vote_url = f"https://t.me/{bot_username}?start=vote_{arg}"
         keyboard = [[InlineKeyboardButton("Перейти к голосованию", url=vote_url)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        welcome_message = "Привет! Нажмите кнопку ниже, чтобы перейти к голосованию."
+        welcome_message = "Привет! Выбери одно из действий:"
         await bot.send_message(
             chat_id=chat_id,
             text=welcome_message,
