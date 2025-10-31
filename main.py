@@ -542,7 +542,8 @@ async def secret(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Нет данных о голосах.")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error(msg="Произошла ошибка:", exc_info=context.error)
+    logger.error(f"Произошла ошибка: {context.error}", exc_info=True)
+    await update.effective_message.reply_text("Произошла ошибка. Попробуйте позже.")
 
 async def book_slot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data = context.user_data
@@ -645,10 +646,14 @@ async def cancel_add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return ConversationHandler.END
 
 def main() -> None:
-    application = ApplicationBuilder().token(TOKEN).persistence(persistence).build()
-    application.add_error_handler(error_handler)  
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .persistence(persistence)
+        .build()
+    )
 
+    # Добавление всех обработчиков ДО вызова run_polling()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('admin', admin))
     application.add_handler(CommandHandler('namerooms', name_rooms))
@@ -667,6 +672,20 @@ def main() -> None:
     application.add_handler(CommandHandler('countvotes', count_votes))
     application.add_handler(CommandHandler('topiclist', topic_list))
     application.add_handler(CommandHandler('secret', secret))
+
+    # Добавление ConversationHandlers
+    application.add_handler(book_slot_conv_handler)
+    application.add_handler(add_topic_conv_handler)
+
+    # Остальные обработчики
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, process_message)
+    )
+    application.add_error_handler(error_handler)
+
+    # Запуск бота
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
     book_slot_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('bookslot', book_slot_start)],
