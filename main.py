@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 TOKEN = os.getenv('TOKEN')
 TOPICS_CHAT = os.getenv('TOPICS_CHAT')
 VOTING_CHAT = os.getenv('VOTING_CHAT')
+PERSISTENCE_PATH = os.getenv('PERSISTENCE_PATH', 'bot_data.pkl')
 
 if not TOKEN:
     logger.error("Ошибка: переменная окружения TOKEN не установлена.")
@@ -33,9 +34,7 @@ if not VOTING_CHAT:
     logger.error("Ошибка: переменная окружения VOTING_CHAT не установлена.")
     exit(1)
 
-import os
-PERSISTENCE_PATH = os.getenv('PERSISTENCE_PATH', 'bot_data.pkl')
-persistence = PicklePersistence(filepath=PERSISTENCE_PATH)
+persistence = PicklePersistence(filepath=PERSISTENCE_PATH, store_user_data=True, store_chat_data=True, store_bot_data=True)
 
 # Состояния для ConversationHandler
 ROOM_SELECTION, SLOT_SELECTION = range(2)
@@ -95,7 +94,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message_thread_id = update.effective_message.message_thread_id if update.effective_message else None
-
     bot_data = context.bot_data
     num_rooms = bot_data.get('num_rooms', 3)
     num_slots = bot_data.get('num_slots', 4)
@@ -590,11 +588,13 @@ async def book_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 # Новая функциональность для /addtopicuser
 async def add_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    logger.info("add_topic_user: Диалог запущен")
     context.user_data['current_conversation'] = 'add_topic_user_conv'
     await update.message.reply_text("Введите ваше имя:")
     return ADD_NAME
 
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    logger.info("receive_name: Получено имя")
     user_message = update.message.text.strip()
     if not user_message:
         await update.message.reply_text("Пожалуйста, введите ваше имя:")
@@ -610,6 +610,7 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return ADD_CATEGORY
 
 async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    logger.info("select_category: Категория выбрана")
     query = update.callback_query
     await query.answer()
     selected_category = query.data
@@ -618,6 +619,7 @@ async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return ADD_TOPIC
 
 async def receive_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    logger.info("receive_topic_user: Получена тема")
     user_message = update.message.text.strip()
     if not user_message:
         await update.message.reply_text("Пожалуйста, введите название темы:")
