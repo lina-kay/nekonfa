@@ -236,6 +236,7 @@ async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text("Некорректная категория. Попробуйте снова.")
         return ADD_CATEGORY
     context.user_data['category'] = category
+    context.user_data['current_state'] = ADD_TOPIC
     await query.edit_message_text("Теперь введите название темы:")
     return ADD_TOPIC
 
@@ -254,6 +255,60 @@ async def receive_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def cancel_add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Добавление темы отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
+
+### Диалог добавления тем ###
+async def add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.clear()
+    context.user_data['adding_topics'] = True
+    context.user_data['new_topics'] = []
+    await update.message.reply_text(
+        "Введите темы через точку с запятой (;). Для завершения отправьте /done."
+    )
+
+async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_data = context.user_data
+    if not user_data.get('adding_topics', False):
+        return
+    text = update.message.text.strip()
+    if text.startswith('/'):
+        return  # Пропуск команд
+    if ';' in text:
+        topics = [t.strip() for t in text.split(';') if t.strip()]
+        user_data['new_topics'].extend(topics)
+    else:
+        user_data['new_topics'].append(text)
+    await update.message.reply_text(f"Добавлено тем: {len(user_data['new_topics'])}")
+
+async def done_adding_topics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_data = context.user_data
+    if not user_data.get('adding_topics', False):
+        return
+    new_topics = user_data.pop('new_topics', [])
+    current_topics = context.bot_data.get('topics', [])
+    context.bot_data['topics'] = current_topics + new_topics
+    await update.message.reply_text(f"Добавлено тем: {len(new_topics)}.")
+    user_data.pop('adding_topics', None)
+    return ConversationHandler.END
+
+### Диалог установки названий залов ###
+async def name_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data['awaiting_room_names'] = True
+    await update.message.reply_text(
+        "Введите названия залов, разделяя их точкой с запятой (;). Например:\n'Основной зал; Малая аудитория'"
+    )
+
+async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_data = context.user_data
+    if not user_data.get('awaiting_room_names', False):
+        return
+    text = update.message.text.strip()
+    room_names = [name.strip() for name in text.split(';') if name.strip()]
+    if not room_names:
+        await update.message.reply_text("Вы не ввели ни одного названия. Повторите ввод.")
+        return
+    context.bot_data['room_names'] = room_names
+    await update.message.reply_text(f"Названия залов установлены: {', '.join(room_names)}")
+    user_data.pop('awaiting_room_names', None)
 
 ### Остальные функции ###
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -454,28 +509,6 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     else:
         await update.message.reply_text("Я не понял команду. Используйте доступные функции.")
 
-async def name_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    user_data.clear()
-    user_data['awaiting_room_names'] = True
-    await update.message.reply_text(
-        "Введите названия залов, разделяя их точкой с запятой (;). Например:\n'Основной зал; Малая аудитория'"
-    )
-
-async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    if not user_data.get('awaiting_room_names', False):
-        return
-    text = update.message.text.strip()
-    room_names = [name.strip() for name in text.split(';') if name.strip()]
-    if not room_names:
-        await update.message.reply_text("Вы не ввели ни одного названия. Повторите ввод.")
-        return
-    context.bot_data['room_names'] = room_names
-    await update.message.reply_text(f"Названия залов установлены: {', '.join(room_names)}")
-    user_data.pop('awaiting_room_names', None)
-
-### Диалог установки параметров ###
 async def set_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data['awaiting_rooms'] = True
     await update.message.reply_text("Введите количество залов:")
@@ -506,40 +539,6 @@ async def process_number_input(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("Некорректное число. Повторите ввод.")
     finally:
         user_data.clear()
-
-### Диалог добавления тем ###
-async def add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    context.user_data.clear()
-    context.user_data['adding_topics'] = True
-    context.user_data['new_topics'] = []
-    await update.message.reply_text(
-        "Введите темы через точку с запятой (;). Для завершения отправьте /done."
-    )
-
-async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    if not user_data.get('adding_topics', False):
-        return
-    text = update.message.text.strip()
-    if text.startswith('/'):
-        return  # Пропуск команд
-    if ';' in text:
-        topics = [t.strip() for t in text.split(';') if t.strip()]
-        user_data['new_topics'].extend(topics)
-    else:
-        user_data['new_topics'].append(text)
-    await update.message.reply_text(f"Добавлено тем: {len(user_data['new_topics'])}")
-
-async def done_adding_topics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    if not user_data.get('adding_topics', False):
-        return
-    new_topics = user_data.pop('new_topics', [])
-    current_topics = context.bot_data.get('topics', [])
-    context.bot_data['topics'] = current_topics + new_topics
-    await update.message.reply_text(f"Добавлено тем: {len(new_topics)}.")
-    user_data.pop('adding_topics', None)
-    return ConversationHandler.END
 
 async def remove_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
@@ -618,6 +617,7 @@ def main() -> None:
         if key not in application.bot_data:
             application.bot_data[key] = default
 
+    # Диалоги
     book_slot_conv = ConversationHandler(
         entry_points=[CommandHandler('bookslot', book_slot_start)],
         states={
@@ -657,6 +657,7 @@ def main() -> None:
         name="add_topic"
     )
 
+    # Обработчики
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('admin', admin))
     application.add_handler(CommandHandler('namerooms', name_rooms))
@@ -681,7 +682,13 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'), process_number_input))
 
     application.add_handler(CallbackQueryHandler(button))
+
+    # Обработчик для настройки названий залов
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receive_room_names))
+
+    # Общий обработчик для текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_message))
+
     application.add_error_handler(error_handler)
 
     logger.info("Бот запущен.")
