@@ -319,11 +319,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message_thread_id = update.effective_message.message_thread_id if update.effective_message else None
-    try:
-    user = await context.bot.get_chat(int(user_id))
-    except Exception as e:
-    logger.error(f"Ошибка при получении данных пользователя {user_id}: {e}")
-    username = f"ID: {user_id}"
     num_rooms = context.bot_data.get('num_rooms', 3)
     num_slots = context.bot_data.get('num_slots', 4)
     room_names = context.bot_data.get('room_names', [f"Зал {i +1}" for i in range(num_rooms)])
@@ -369,15 +364,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         unscheduled_vote_counts = [(topic, vote_count[topic]) for topic in unscheduled_topics]
         unscheduled_vote_counts.sort(key=lambda x: x[1])
         unscheduled_text = "<b>Темы вне расписания:</b>\n"
-        for topic, count in unscheduled_vote_counts:
-            unscheduled_text += f"• {topic} - {count} голос(ов)\n"
-    else:
-        unscheduled_text = ""
-    final_message = f"{vote_stats}\n\n{schedule_text}"
-    if unscheduled_text:
-        final_message += f"\n{unscheduled_text}"
-    await update.message.reply_text(text=final_message, parse_mode='HTML', message_thread_id=message_thread_id)
-
+        for topic, count in unscheduled_vote
 async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
     current_conv = user_data.get('current_conversation')
@@ -539,7 +526,7 @@ async def secret(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 user = await context.bot.get_chat(int(user_id))
                 username = user.full_name or user.username or f"ID: {user_id}"
             except Exception as e:
-                logger.error(f"Ошибка при получении информации о пользователе {user_id}: {e}")
+                logger.error(f"Ошибка при получении данных пользователя {user_id}: {e}")
                 username = f"ID: {user_id}"
             message_lines.append(f"Пользователь {username} проголосовал за:\n" +
                                  '\n'.join(f"• {topic}" for topic in votes))
@@ -637,7 +624,7 @@ async def receive_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ADD_TOPIC
     name = context.user_data.get('name', 'Аноним')
     category = context.user_data.get('category', 'Не определено')
-    formatted_topic = f"{name}: {category.title()}. {user_message}"
+    formatted_topic = f"{name}: {category}. {user_message}"  
     topics = context.bot_data.get("topics", [])
     topics.append(formatted_topic)
     context.bot_data["topics"] = topics
