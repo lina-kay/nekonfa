@@ -67,7 +67,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if context.args:
             arg = context.args[0]
             if arg.startswith("vote_"):
-                # Обработка голосования
                 arg_parts = arg[5:].split('_', 1)
                 source_chat_id = int(arg_parts[0])
                 source_thread_id = int(arg_parts[1]) if len(arg_parts) > 1 else None
@@ -209,6 +208,7 @@ async def book_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 ### Диалог добавления темы пользователем ###
 async def add_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
+    context.user_data['current_state'] = ADD_NAME
     await update.message.reply_text("Введите ваше имя:")
     return ADD_NAME
 
@@ -218,6 +218,7 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text("Пожалуйста, введите ваше имя:")
         return ADD_NAME
     context.user_data['name'] = name
+    context.user_data['current_state'] = ADD_CATEGORY
     keyboard = [
         [InlineKeyboardButton("Создать", callback_data='создать')],
         [InlineKeyboardButton("Обсудить", callback_data='обсудить')],
@@ -231,6 +232,9 @@ async def select_category(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
     category = query.data
+    if category not in ['создать', 'обсудить', 'объединиться']:
+        await query.edit_message_text("Некорректная категория. Попробуйте снова.")
+        return ADD_CATEGORY
     context.user_data['category'] = category
     await query.edit_message_text("Теперь введите название темы:")
     return ADD_TOPIC
@@ -254,10 +258,9 @@ async def cancel_add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 ### Остальные функции ###
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
-    if str(user_id) in context.bot_data.get("votes", {}):
-        await update.message.reply_text(
-            "Вы уже проголосовали. Используйте /changevote для изменения."
-        )
+    votes = context.bot_data.get("votes", {})
+    if str(user_id) in votes:
+        await update.message.reply_text("Вы уже проголосовали. Используйте /changevote для изменения.")
         return
     topics = context.bot_data.get("topics", [])
     if not topics:
@@ -266,16 +269,34 @@ async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data["vote_selection"] = []
     await send_vote_message(user_id, context)
 
+async def changevote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    votes = context.bot_data.get("votes", {})
+    if str(user_id) not in votes:
+        await vote(update, context)
+        return
+    context.user_data["vote_selection"] = votes[str(user_id)].copy()
+    await send_vote_message(user_id, context)
+
 async def send_vote_message(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        selected_topics = context.user_data.get("vote_selection", [])
-        topics = context.bot_data.get("topics", [])
-        max_votes = context.bot_data.get('max_votes', 4)
-        keyboard = create_topic_keyboard(topics, selected_topics, max_votes)
-        vote_message = (
-            f"Выберите темы (максимум {max_votes}):"
-            "\nКогда закончите, нажмите \"Отправить\"."
+    user_data = context.user_data
+    if "vote_selection" not in user_data:
+        user_data["vote_selection"] = []
+    selected_topics = user_data["vote_selection"]
+    topics = context.bot_data.get("topics", [])
+    max_votes = context.bot_data.get('max_votes', 4)
+    if not topics:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="Нет доступных тем для голосования."
         )
+        return
+    keyboard = create_topic_keyboard(topics, selected_topics, max_votes)
+    vote_message = (
+        f"Выберите темы (максимум {max_votes}):"
+        "\nКогда закончите, нажмите \"Отправить\"."
+    )
+    try:
         await context.bot.send_message(
             chat_id=user_id,
             text=vote_message,
@@ -292,12 +313,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
     bot = context.bot
 
+    if "vote_selection" not in user_data:
+        user_data["vote_selection"] = []
+
     if selected_data == "submit_votes":
-        if "vote_selection" not in user_data:
-            await query.answer("Вы не выбрали темы.", show_alert=True)
-            return
         selected_topics = user_data["vote_selection"]
-        if len(selected_topics) == 0:
+        if not selected_topics:
             await query.answer("Вы не выбрали темы.", show_alert=True)
             return
         votes = context.bot_data.get("votes", {})
@@ -310,7 +331,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ]
         reply_markup = InlineKeyboardMarkup(return_keyboard)
         await query.edit_message_text(
-            text=f"Спасибо! Вы проголосовали за:\n{selected_topics_text}",
+            text=f"Ваш голос изменён:\n{selected_topics_text}",
             reply_markup=reply_markup
         )
     elif selected_data == "changevote":
@@ -323,7 +344,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await query.answer("Неверный выбор.", show_alert=True)
             return
         topic = topics[index]
-        if topic in user_data.get("vote_selection", []):
+        if topic in user_data["vote_selection"]:
             user_data["vote_selection"].remove(topic)
         else:
             if len(user_data["vote_selection"]) < max_votes:
@@ -425,16 +446,11 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
-    if user_data.get('awaiting_room_names', False):
-        await receive_room_names(update, context)
-    elif user_data.get('awaiting_rooms', False):
-        await set_rooms_text(update, context)
-    elif user_data.get('awaiting_slots', False):
-        await set_slots_text(update, context)
-    elif user_data.get('awaiting_votes', False):
-        await set_votes_text(update, context)
-    elif user_data.get('adding_topics', False):
-        await receive_topic(update, context)
+    current_state = user_data.get('current_state')
+    if current_state == ADD_NAME:
+        await receive_name(update, context)
+    elif current_state == ADD_TOPIC:
+        await receive_topic_user(update, context)
     else:
         await update.message.reply_text("Я не понял команду. Используйте доступные функции.")
 
@@ -601,13 +617,13 @@ async def secret(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("\n\n".join(message))
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error(f"Ошибка: {context.error}", exc_info=True)
+    logger.error(f"Ошибка: {context.error}")
+    logger.error("Стек вызовов:\n%s", traceback.format_exc())
     await update.effective_message.reply_text("Произошла ошибка. Попробуйте позже.")
 
 def main() -> None:
     application = ApplicationBuilder().token(TOKEN).persistence(persistence).build()
 
-    # Инициализация bot_data
     required_keys = {
         "votes": {},
         "topics": [],
@@ -621,7 +637,6 @@ def main() -> None:
         if key not in application.bot_data:
             application.bot_data[key] = default
 
-    # Диалоги
     book_slot_conv = ConversationHandler(
         entry_points=[CommandHandler('bookslot', book_slot_start)],
         states={
@@ -645,12 +660,11 @@ def main() -> None:
         name="add_topic"
     )
 
-    # Обработчики
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('admin', admin))
     application.add_handler(CommandHandler('namerooms', name_rooms))
     application.add_handler(CommandHandler('vote', vote))
-    application.add_handler(CommandHandler('changevote', vote))
+    application.add_handler(CommandHandler('changevote', changevote))
     application.add_handler(CommandHandler('finalize', finalize_votes))
     application.add_handler(CommandHandler('addtopic', add_topic))
     application.add_handler(CommandHandler('done', done_adding_topics))
