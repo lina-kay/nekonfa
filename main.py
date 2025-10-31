@@ -649,7 +649,34 @@ def main() -> None:
         .build()
     )
 
-    # Добавление всех обработчиков ДО вызова run_polling()
+    #  Define conversation handlers first
+    book_slot_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('bookslot', book_slot_start)],
+        states={
+            ROOM_SELECTION: [CallbackQueryHandler(book_slot_room_selection)],
+            SLOT_SELECTION: [CallbackQueryHandler(book_slot_slot_selection)],
+        },
+        fallbacks=[CommandHandler('cancel', book_slot_cancel)],
+        name="book_slot_conv",
+        persistent=True,
+    )
+
+    add_topic_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('addtopicuser', add_topic_user)],
+        states={
+            ADD_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name)],
+            ADD_CATEGORY: [CallbackQueryHandler(select_category)],
+            ADD_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_topic_user)],
+        },
+        fallbacks=[
+            CommandHandler('cancel', cancel_add_topic),
+            MessageHandler(filters.COMMAND, cancel_add_topic),
+        ],
+        name="add_topic_user_conv",
+        persistent=True,
+    )
+
+    # ✅ Now add them (and all others) to the application
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('admin', admin))
     application.add_handler(CommandHandler('namerooms', name_rooms))
@@ -669,54 +696,11 @@ def main() -> None:
     application.add_handler(CommandHandler('topiclist', topic_list))
     application.add_handler(CommandHandler('secret', secret))
 
-    # Добавление ConversationHandlers
+    #  Add conversation handlers AFTER they are defined
     application.add_handler(book_slot_conv_handler)
     application.add_handler(add_topic_conv_handler)
 
-    # Остальные обработчики
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, process_message)
-    )
-    application.add_error_handler(error_handler)
-
-    # Запуск бота
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-    book_slot_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('bookslot', book_slot_start)],
-        states={
-            ROOM_SELECTION: [CallbackQueryHandler(book_slot_room_selection)],
-            SLOT_SELECTION: [CallbackQueryHandler(book_slot_slot_selection)],
-        },
-        fallbacks=[CommandHandler('cancel', book_slot_cancel)],
-        name="book_slot_conv",
-        persistent=True,
-    )
-    application.add_handler(book_slot_conv_handler)
-
-    add_topic_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('addtopicuser', add_topic_user)],
-        states={
-            ADD_NAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name)
-            ],
-            ADD_CATEGORY: [
-                CallbackQueryHandler(select_category)
-            ],
-            ADD_TOPIC: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_topic_user)
-            ],
-        },
-        fallbacks=[
-            CommandHandler('cancel', cancel_add_topic),
-            MessageHandler(filters.COMMAND, cancel_add_topic)
-        ],
-        name="add_topic_user_conv",
-        persistent=True,
-    )
-    application.add_handler(add_topic_conv_handler)
-
+    #  Add callback and text handlers
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_message))
     application.add_error_handler(error_handler)
