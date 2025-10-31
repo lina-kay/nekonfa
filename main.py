@@ -657,6 +657,7 @@ def main() -> None:
             SLOT_SELECTION: [CallbackQueryHandler(book_slot_slot_selection)],
         },
         fallbacks=[CommandHandler('cancel', book_slot_cancel)],
+        per_message=True,
         name="book_slot_conv",
         persistent=True,
     )
