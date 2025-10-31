@@ -36,7 +36,7 @@ if not VOTING_CHAT:
 
 persistence = PicklePersistence(
     filepath=PERSISTENCE_PATH,
-    storage_version=1  # Необязательно, но рекомендуется для совместимости
+    storage_version=1 
 )
 
 # Состояния для ConversationHandler
@@ -646,6 +646,8 @@ async def cancel_add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 def main() -> None:
     application = ApplicationBuilder().token(TOKEN).persistence(persistence).build()
+    application.add_error_handler(error_handler)  
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('admin', admin))
@@ -705,7 +707,7 @@ def main() -> None:
     application.add_error_handler(error_handler)
 
     logger.info("Запуск бота.")
-    application.run_polling()
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()
