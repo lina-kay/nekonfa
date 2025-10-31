@@ -35,8 +35,7 @@ if not VOTING_CHAT:
     exit(1)
 
 persistence = PicklePersistence(
-    filepath=PERSISTENCE_PATH,
-    storage_version=1 
+    filepath=PERSISTENCE_PATH
 )
 
 # Состояния для ConversationHandler
