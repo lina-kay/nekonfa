@@ -370,6 +370,11 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
+    current_conv = user_data.get('current_conversation')
+    
+    if current_conv == 'add_topic_user_conv':
+        return  # Пусть обрабатывается диалоговым обработчиком
+    
     if user_data.get('awaiting_room_names', False):
         await receive_room_names(update, context)
     elif user_data.get('awaiting_rooms', False):
@@ -583,6 +588,7 @@ async def book_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 # Новая функциональность для /addtopicuser
 async def add_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data['current_conversation'] = 'add_topic_user_conv'
     await update.message.reply_text("Введите ваше имя:")
     return ADD_NAME
 
@@ -621,10 +627,12 @@ async def receive_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     topics.append(formatted_topic)
     context.bot_data["topics"] = topics
     await update.message.reply_text(f"Тема добавлена:\n{formatted_topic}", reply_markup=ReplyKeyboardRemove())
+    context.user_data.pop('current_conversation', None)
     context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel_add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data.pop('current_conversation', None)
     await update.message.reply_text("Добавление темы отменено.", reply_markup=ReplyKeyboardRemove())
     context.user_data.clear()
     return ConversationHandler.END
@@ -666,11 +674,20 @@ def main() -> None:
     add_topic_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('addtopicuser', add_topic_user)],
         states={
-            ADD_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name)],
-            ADD_CATEGORY: [CallbackQueryHandler(select_category)],
-            ADD_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_topic_user)],
+            ADD_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name)
+            ],
+            ADD_CATEGORY: [
+                CallbackQueryHandler(select_category)
+            ],
+            ADD_TOPIC: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_topic_user)
+            ],
         },
-        fallbacks=[CommandHandler('cancel', cancel_add_topic)],
+        fallbacks=[
+            CommandHandler('cancel', cancel_add_topic),
+            MessageHandler(filters.COMMAND, cancel_add_topic)
+        ],
         name="add_topic_user_conv",
         persistent=True,
     )
