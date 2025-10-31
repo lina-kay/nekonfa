@@ -208,12 +208,20 @@ async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not topics:
         await update.message.reply_text("Нет доступных тем.")
         return
+    max_votes = context.bot_data.get('max_votes', 4)
+    current_votes = len(context.user_data.get("vote_selection", []))
+    if current_votes >= max_votes:
+        await update.message.reply_text(f"Вы уже выбрали максимальное количество тем ({max_votes})")
+        return
     context.user_data["vote_selection"] = context.bot_data["votes"].get(str(user_id), []).copy()
     await send_vote_message(user_id, context)
 
 async def send_vote_message(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
     selected = context.user_data.get("vote_selection", [])
     topics = context.bot_data.get("topics", [])
+    if not topics:
+        await context.bot.send_message(chat_id=user_id, text="Нет доступных тем для голосования")
+        return
     max_votes = context.bot_data.get('max_votes', 4)
     keyboard = []
     for i, t in enumerate(topics):
@@ -267,7 +275,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             keyboard.append([InlineKeyboardButton(f"{checked}{t}", callback_data=f"rem_{i}")])
         keyboard.append([InlineKeyboardButton("Отправить", callback_data="submit_remove")])
         keyboard.append([InlineKeyboardButton("Отмена", callback_data="cancel_remove")])
-        await query.edit_message_reply_markup(InlineKeyboardMarkup(keyboard))
+        try:
+            await query.edit_message_reply_markup(InlineKeyboardMarkup(keyboard))
+        except BadRequest as e:
+            if str(e) != "Message is not modified":
+                raise
     elif data == "submit_remove":
         if 'remove_selection' in user_data:
             topics = bot_data.get("topics", [])
@@ -300,7 +312,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             keyboard.append([InlineKeyboardButton(f"{checked}{t}", callback_data=str(i))])
         keyboard.append([InlineKeyboardButton("Отправить", callback_data="submit_votes")])
         keyboard.append([InlineKeyboardButton("Спикеры и Темы", url=TOPICS_CHAT)])
-        await query.edit_message_reply_markup(InlineKeyboardMarkup(keyboard))
+        try:
+            await query.edit_message_reply_markup(InlineKeyboardMarkup(keyboard))
+        except BadRequest as e:
+            if str(e) != "Message is not modified":
+                raise
 
 async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
