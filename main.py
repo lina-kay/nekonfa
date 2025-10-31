@@ -39,6 +39,8 @@ persistence = PicklePersistence(filepath="bot_data.pkl")
 ROOM_SELECTION, SLOT_SELECTION = range(2)
 ADD_NAME, ADD_CATEGORY, ADD_TOPIC = range(3)
 
+# Внесены изменения в функцию start для добавления кнопки "Добавить тему"
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot = context.bot
     bot_username = (await bot.get_me()).username
@@ -62,15 +64,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await send_vote_message(user_id, context)
         elif context.args and context.args[0] == "vote":
             await send_vote_message(user_id, context)
+        elif context.args and context.args[0] == "addtopicuser":
+            await add_topic_user(update, context)
         else:
             vote_url = f"https://t.me/{bot_username}?start=vote"
-            keyboard = [[InlineKeyboardButton("Перейти к голосованию", url=vote_url)]]
+            add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
+            keyboard = [
+                [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
+                [InlineKeyboardButton("Добавить тему", url=add_topic_url)]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            welcome_message = "Привет! Нажмите кнопку ниже, чтобы перейти к голосованию."
+            welcome_message = "Привет! Выберите действие:"
             await bot.send_message(chat_id=user_id, text=welcome_message, reply_markup=reply_markup)
     elif chat_type in ['group', 'supergroup']:
         chat_id = chat.id
-        chat_username = chat.username
         if message_thread_id:
             arg = f"{chat_id}_{message_thread_id}"
         else:
@@ -588,9 +595,9 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         return ADD_NAME
     context.user_data['name'] = user_message
     keyboard = [
-        [InlineKeyboardButton("Создать", callback_data='create')],
-        [InlineKeyboardButton("Обсудить", callback_data='discuss')],
-        [InlineKeyboardButton("Объединиться", callback_data='unite')]
+        [InlineKeyboardButton("Создать", callback_data='Создать')],
+        [InlineKeyboardButton("Обсудить", callback_data='Обсудить')],
+        [InlineKeyboardButton("Объединиться", callback_data='Объединиться')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Выберите категорию:", reply_markup=reply_markup)
