@@ -51,10 +51,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             vote_url = f"https://t.me/{bot_username}?start=vote"
             add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
+            topics_chat_url = f"https://t.me/{TOPICS_CHAT}"
+            voting_chat_url = f"https://t.me/{VOTING_CHAT}"
+            
             keyboard = [
                 [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
-                [InlineKeyboardButton("Добавить тему", url=add_topic_url)]
+                [InlineKeyboardButton("Добавить тему", url=add_topic_url)],
+                [InlineKeyboardButton("Спикеры и темы", url=topics_chat_url)],
+                [InlineKeyboardButton("Расписание", url=voting_chat_url)]
             ]
+            
             await bot.send_message(
                 chat_id=user_id,
                 text="Добро пожаловать!",
@@ -68,10 +74,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             arg = f"{chat_id}"
         vote_url = f"https://t.me/{bot_username}?start=vote_{arg}"
         add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
+        topics_chat_url = f"https://t.me/{TOPICS_CHAT}"
+        voting_chat_url = f"https://t.me/{VOTING_CHAT}"
+        
         keyboard = [
             [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
-            [InlineKeyboardButton("Добавить тему", url=add_topic_url)]
+            [InlineKeyboardButton("Добавить тему", url=add_topic_url)],
+            [InlineKeyboardButton("Спикеры и темы", url=topics_chat_url)],
+            [InlineKeyboardButton("Расписание", url=voting_chat_url)]
         ]
+        
         await bot.send_message(
             chat_id=chat_id,
             text="Добро пожаловать!",
