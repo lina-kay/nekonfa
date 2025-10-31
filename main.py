@@ -140,7 +140,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         booked_info = "\n<b>Забронированные слоты:</b>\n"
         for room, slots in booked_slots.items():
             slots_str = ', '.join(str(s) for s in slots)
-            booked_info += f"{room}: слоты {slots_str}\n"
+            booked_info += f"<b>{room}:</b> слоты {slots_str}\n"
         admin_message += booked_info
 
     await update.message.reply_text(
@@ -224,9 +224,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
     bot = context.bot
 
-    # Проверка на наличие votes в bot_data
     if "votes" not in context.bot_data:
-        context.bot_data["votes"] = {} 
+        context.bot_data["votes"] = {}
 
     if selected_data == "submit_votes":
         if "vote_selection" not in user_data:
@@ -362,15 +361,27 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     unscheduled_topics = [topic for topic in sorted_topics if topic not in scheduled_topics]
     if unscheduled_topics:
         unscheduled_vote_counts = [(topic, vote_count[topic]) for topic in unscheduled_topics]
-        unscheduled_vote_counts.sort(key=lambda x: x[1])
+        unscheduled_vote_counts.sort(key=lambda x: x[1])  # Сортируем по возрастанию голосов
         unscheduled_text = "<b>Темы вне расписания:</b>\n"
-        for topic, count in unscheduled_vote
+        for topic, count in unscheduled_vote_counts:
+            unscheduled_text += f"• {topic} - {count} голос(ов)\n"
+    else:
+        unscheduled_text = ""
+    final_message = f"{vote_stats}\n\n{schedule_text}"
+    if unscheduled_text:
+        final_message += f"\n{unscheduled_text}"
+    await update.message.reply_text(
+        text=final_message,
+        parse_mode='HTML',
+        message_thread_id=message_thread_id
+    )
+
 async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
     current_conv = user_data.get('current_conversation')
     
     if current_conv == 'add_topic_user_conv':
-        return  # Пусть обрабатывается диалоговым обработчиком
+        return
     
     if user_data.get('awaiting_room_names', False):
         await receive_room_names(update, context)
@@ -584,7 +595,6 @@ async def book_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text("Бронирование отменено.")
     return ConversationHandler.END
 
-# Новая функциональность для /addtopicuser
 async def add_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info("add_topic_user: Диалог запущен")
     context.user_data['current_conversation'] = 'add_topic_user_conv'
@@ -624,7 +634,7 @@ async def receive_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ADD_TOPIC
     name = context.user_data.get('name', 'Аноним')
     category = context.user_data.get('category', 'Не определено')
-    formatted_topic = f"{name}: {category}. {user_message}"  
+    formatted_topic = f"{name}: {category}. {user_message}"
     topics = context.bot_data.get("topics", [])
     topics.append(formatted_topic)
     context.bot_data["topics"] = topics
@@ -647,7 +657,6 @@ def main() -> None:
         .build()
     )
 
-    # Инициализация всех необходимых ключей в bot_data
     required_keys = {
         "votes": {},
         "topics": [],
@@ -661,7 +670,6 @@ def main() -> None:
         if key not in application.bot_data:
             application.bot_data[key] = default
 
-    #  Define conversation handlers first
     book_slot_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('bookslot', book_slot_start)],
         states={
@@ -690,7 +698,6 @@ def main() -> None:
         persistent=True,
     )
 
-    # ✅ Now add them (and all others) to the application
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('admin', admin))
     application.add_handler(CommandHandler('namerooms', name_rooms))
@@ -710,11 +717,9 @@ def main() -> None:
     application.add_handler(CommandHandler('topiclist', topic_list))
     application.add_handler(CommandHandler('secret', secret))
 
-    #  Add conversation handlers AFTER they are defined
     application.add_handler(book_slot_conv_handler)
     application.add_handler(add_topic_conv_handler)
 
-    #  Add callback and text handlers
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_message))
     application.add_error_handler(error_handler)
