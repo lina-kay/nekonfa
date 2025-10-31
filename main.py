@@ -34,7 +34,10 @@ if not VOTING_CHAT:
     logger.error("Ошибка: переменная окружения VOTING_CHAT не установлена.")
     exit(1)
 
-persistence = PicklePersistence(filepath=PERSISTENCE_PATH, store_user_data=True, store_chat_data=True, store_bot_data=True)
+persistence = PicklePersistence(
+    filepath=PERSISTENCE_PATH,
+    storage_version=1  # Необязательно, но рекомендуется для совместимости
+)
 
 # Состояния для ConversationHandler
 ROOM_SELECTION, SLOT_SELECTION = range(2)
