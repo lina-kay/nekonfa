@@ -475,65 +475,43 @@ async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(f"Названия залов установлены: {', '.join(room_names)}")
     user_data.pop('awaiting_room_names', None)
 
+### Диалог установки параметров ###
 async def set_rooms(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    user_data.clear()
-    user_data['awaiting_rooms'] = True
+    context.user_data['awaiting_rooms'] = True
     await update.message.reply_text("Введите количество залов:")
 
 async def set_slots(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    user_data.clear()
-    user_data['awaiting_slots'] = True
+    context.user_data['awaiting_slots'] = True
     await update.message.reply_text("Введите количество слотов в каждом зале:")
 
 async def set_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    user_data.clear()
-    user_data['awaiting_votes'] = True
+    context.user_data['awaiting_votes'] = True
     await update.message.reply_text("Введите максимальное количество голосов для участника:")
 
-async def set_rooms_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def process_number_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
     text = update.message.text.strip()
     try:
-        num_rooms = int(text)
-        context.bot_data['num_rooms'] = num_rooms
-        await update.message.reply_text(f"Количество залов установлено на {num_rooms}.")
+        num = int(text)
+        if user_data.get('awaiting_rooms'):
+            context.bot_data['num_rooms'] = num
+            await update.message.reply_text(f"Количество залов установлено на {num}.")
+        elif user_data.get('awaiting_slots'):
+            context.bot_data['num_slots'] = num
+            await update.message.reply_text(f"Количество слотов установлено на {num}.")
+        elif user_data.get('awaiting_votes'):
+            context.bot_data['max_votes'] = num
+            await update.message.reply_text(f"Максимальное количество голосов установлено на {num}.")
     except ValueError:
         await update.message.reply_text("Некорректное число. Повторите ввод.")
     finally:
-        user_data.pop('awaiting_rooms', None)
+        user_data.clear()
 
-async def set_slots_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    text = update.message.text.strip()
-    try:
-        num_slots = int(text)
-        context.bot_data['num_slots'] = num_slots
-        await update.message.reply_text(f"Количество слотов установлено на {num_slots}.")
-    except ValueError:
-        await update.message.reply_text("Некорректное число. Повторите ввод.")
-    finally:
-        user_data.pop('awaiting_slots', None)
-
-async def set_votes_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    text = update.message.text.strip()
-    try:
-        max_votes = int(text)
-        context.bot_data['max_votes'] = max_votes
-        await update.message.reply_text(f"Максимальное количество голосов установлено на {max_votes}.")
-    except ValueError:
-        await update.message.reply_text("Некорректное число. Повторите ввод.")
-    finally:
-        user_data.pop('awaiting_votes', None)
-
+### Диалог добавления тем ###
 async def add_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_data = context.user_data
-    user_data.clear()
-    user_data['adding_topics'] = True
-    user_data['new_topics'] = []
+    context.user_data.clear()
+    context.user_data['adding_topics'] = True
+    context.user_data['new_topics'] = []
     await update.message.reply_text(
         "Введите темы через точку с запятой (;). Для завершения отправьте /done."
     )
@@ -543,6 +521,8 @@ async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not user_data.get('adding_topics', False):
         return
     text = update.message.text.strip()
+    if text.startswith('/'):
+        return  # Пропуск команд
     if ';' in text:
         topics = [t.strip() for t in text.split(';') if t.strip()]
         user_data['new_topics'].extend(topics)
@@ -559,6 +539,7 @@ async def done_adding_topics(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.bot_data['topics'] = current_topics + new_topics
     await update.message.reply_text(f"Добавлено тем: {len(new_topics)}.")
     user_data.pop('adding_topics', None)
+    return ConversationHandler.END
 
 async def remove_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
@@ -648,7 +629,7 @@ def main() -> None:
         name="book_slot"
     )
 
-    add_topic_conv = ConversationHandler(
+    add_topic_user_conv = ConversationHandler(
         entry_points=[CommandHandler('addtopicuser', add_topic_user)],
         states={
             ADD_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_name)],
@@ -656,6 +637,22 @@ def main() -> None:
             ADD_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_topic_user)],
         },
         fallbacks=[CommandHandler('cancel', cancel_add_topic)],
+        per_user=True,
+        name="add_topic_user"
+    )
+
+    add_topic_conv = ConversationHandler(
+        entry_points=[CommandHandler('addtopic', add_topic)],
+        states={
+            None: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_topic),
+                CommandHandler('done', done_adding_topics)
+            ]
+        },
+        fallbacks=[],
+        map_to_parent={
+            ConversationHandler.END: ConversationHandler.END
+        },
         per_user=True,
         name="add_topic"
     )
@@ -666,13 +663,8 @@ def main() -> None:
     application.add_handler(CommandHandler('vote', vote))
     application.add_handler(CommandHandler('changevote', changevote))
     application.add_handler(CommandHandler('finalize', finalize_votes))
-    application.add_handler(CommandHandler('addtopic', add_topic))
-    application.add_handler(CommandHandler('done', done_adding_topics))
     application.add_handler(CommandHandler('removetopic', remove_topic))
     application.add_handler(CommandHandler('clearbookings', clear_bookings))
-    application.add_handler(CommandHandler('setrooms', set_rooms))
-    application.add_handler(CommandHandler('setslots', set_slots))
-    application.add_handler(CommandHandler('setvotes', set_votes))
     application.add_handler(CommandHandler('clearvotes', clear_votes))
     application.add_handler(CommandHandler('cleartopics', clear_topics))
     application.add_handler(CommandHandler('countvotes', count_votes))
@@ -680,7 +672,13 @@ def main() -> None:
     application.add_handler(CommandHandler('secret', secret))
 
     application.add_handler(book_slot_conv)
+    application.add_handler(add_topic_user_conv)
     application.add_handler(add_topic_conv)
+
+    application.add_handler(CommandHandler('setrooms', set_rooms))
+    application.add_handler(CommandHandler('setslots', set_slots))
+    application.add_handler(CommandHandler('setvotes', set_votes))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d+$'), process_number_input))
 
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_message))
