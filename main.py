@@ -673,6 +673,7 @@ def main() -> None:
             CommandHandler('cancel', cancel_add_topic),
             MessageHandler(filters.COMMAND, cancel_add_topic),
         ],
+        per_user=True,
         name="add_topic_user_conv",
         persistent=True,
     )
