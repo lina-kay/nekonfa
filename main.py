@@ -39,6 +39,21 @@ persistence = PicklePersistence(
 ROOM_SELECTION, SLOT_SELECTION = range(2)
 ADD_NAME, ADD_CATEGORY, ADD_TOPIC = range(3)
 
+### Вспомогательные функции ###
+def create_room_keyboard(room_names):
+    return [[InlineKeyboardButton(room, callback_data=room)] for room in room_names]
+
+def create_topic_keyboard(topics, selected_topics, max_votes):
+    buttons = [
+        [InlineKeyboardButton(
+            f"{'✅ ' if topic in selected_topics else ''}{topic}",
+            callback_data=str(i)
+        )] for i, topic in enumerate(topics)
+    ]
+    buttons.append([InlineKeyboardButton("Отправить", callback_data="submit_votes")])
+    buttons.append([InlineKeyboardButton("Спикеры и Темы", url=TOPICS_CHAT)])
+    return InlineKeyboardMarkup(buttons)
+
 ### Основные функции ###
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot = context.bot
@@ -49,32 +64,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if chat_type == 'private':
         user_id = chat.id
-        if context.args and context.args[0].startswith("vote_"):
-            arg = context.args[0][5:]  # Убираем 'vote_'
-            if '_' in arg:
-                source_chat_id_str, thread_id_str = arg.split('_', 1)
-                source_chat_id = int(source_chat_id_str)
-                source_thread_id = int(thread_id_str)
-            else:
-                source_chat_id = int(arg)
-                source_thread_id = None
-            context.user_data['source_chat_id'] = source_chat_id
-            context.user_data['source_thread_id'] = source_thread_id
-            await send_vote_message(user_id, context)
-        elif context.args and context.args[0] == "vote":
-            await send_vote_message(user_id, context)
+        if context.args:
+            arg = context.args[0]
+            if arg.startswith("vote_"):
+                # Обработка голосования
+                arg_parts = arg[5:].split('_', 1)
+                source_chat_id = int(arg_parts[0])
+                source_thread_id = int(arg_parts[1]) if len(arg_parts) > 1 else None
+                context.user_data['source_chat_id'] = source_chat_id
+                context.user_data['source_thread_id'] = source_thread_id
+                await send_vote_message(user_id, context)
+            elif arg == "vote":
+                await send_vote_message(user_id, context)
+            elif arg == "addtopicuser":
+                await add_topic_user(update, context)
+                return
         else:
             vote_url = f"https://t.me/{bot_username}?start=vote"
+            add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
             keyboard = [
                 [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
-                [InlineKeyboardButton("Добавить тему", url=f"https://t.me/{bot_username}?start=addtopicuser")]
+                [InlineKeyboardButton("Добавить тему", url=add_topic_url)]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             welcome_message = "Привет! Выберите действие:"
             await bot.send_message(chat_id=user_id, text=welcome_message, reply_markup=reply_markup)
     elif chat_type in ['group', 'supergroup']:
         chat_id = chat.id
-        chat_username = chat.username
         if message_thread_id:
             arg = f"{chat_id}_{message_thread_id}"
         else:
@@ -154,7 +170,7 @@ async def book_slot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_data.clear()
     bot_data = context.bot_data
     room_names = bot_data.get('room_names', [f"Зал {i +1}" for i in range(bot_data.get('num_rooms', 3))])
-    keyboard = [[InlineKeyboardButton(room, callback_data=room)] for room in room_names]
+    keyboard = create_room_keyboard(room_names)
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Выберите зал для бронирования:", reply_markup=reply_markup)
     return ROOM_SELECTION
@@ -184,11 +200,6 @@ async def book_slot_slot_selection(update: Update, context: ContextTypes.DEFAULT
         await query.edit_message_text(f"Вы успешно забронировали слот {selected_slot} в {selected_room}.")
     else:
         await query.edit_message_text(f"Слот {selected_slot} в {selected_room} уже забронирован.")
-    booked_info = "<b>Забронированные слоты:</b>\n"
-    for room, slots in booked_slots.items():
-        slots_str = ', '.join(str(s) for s in slots)
-        booked_info += f"<b>{room}:</b> слоты {slots_str}\n"
-    await update.effective_chat.send_message(booked_info, parse_mode='HTML')
     return ConversationHandler.END
 
 async def book_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -260,13 +271,7 @@ async def send_vote_message(user_id: int, context: ContextTypes.DEFAULT_TYPE) ->
         selected_topics = context.user_data.get("vote_selection", [])
         topics = context.bot_data.get("topics", [])
         max_votes = context.bot_data.get('max_votes', 4)
-        keyboard = [
-            [InlineKeyboardButton(f"{'✅ ' if topic in selected_topics else ''}{topic}", callback_data=str(i))]
-            for i, topic in enumerate(topics)
-        ]
-        keyboard.append([InlineKeyboardButton("Отправить", callback_data="submit_votes")])
-        keyboard.append([InlineKeyboardButton("Спикеры и Темы", url=TOPICS_CHAT)])
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        keyboard = create_topic_keyboard(topics, selected_topics, max_votes)
         vote_message = (
             f"Выберите темы (максимум {max_votes}):"
             "\nКогда закончите, нажмите \"Отправить\"."
@@ -274,7 +279,7 @@ async def send_vote_message(user_id: int, context: ContextTypes.DEFAULT_TYPE) ->
         await context.bot.send_message(
             chat_id=user_id,
             text=vote_message,
-            reply_markup=reply_markup
+            reply_markup=keyboard
         )
     except BadRequest as e:
         logger.error(f"Ошибка при отправке сообщения: {e}")
@@ -390,8 +395,8 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     for room_index in range(num_rooms):
         room_name = room_names[room_index] if room_index < len(room_names) else f"Зал {room_index +1}"
         schedule[room_name] = []
-        for slot_index in range(num_slots):
-            if room_name in booked_slots and (slot_index +1) in booked_slots[room_name]:
+        for slot_num in range(1, num_slots +1):
+            if room_name in booked_slots and slot_num in booked_slots[room_name]:
                 schedule[room_name].append("Игра в Триумвират")
             elif topic_index < len(sorted_topics):
                 topic = sorted_topics[topic_index]
@@ -404,14 +409,14 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     schedule_text = "<b>Расписание:</b>\n\n"
     for room_name in schedule:
         schedule_text += f"<b>{room_name}</b>\n"
-        for slot_num, topic in enumerate(schedule[room_name]):
-            schedule_text += f"<b>Слот {slot_num +1}:</b> {topic}\n"
+        for slot_num, topic in enumerate(schedule[room_name], 1):
+            schedule_text += f"<b>Слот {slot_num}:</b> {topic}\n"
         schedule_text += "\n"
 
     unscheduled_topics = [topic for topic in sorted_topics if topic not in scheduled_topics]
     if unscheduled_topics:
         unscheduled_vote_counts = [(topic, vote_count[topic]) for topic in unscheduled_topics]
-        unscheduled_vote_counts.sort(key=lambda x: x[1])  # По возрастанию
+        unscheduled_vote_counts.sort(key=lambda x: -x[1])  # По убыванию
         unscheduled_text = "<b>Темы вне расписания:</b>\n"
         unscheduled_text += "\n".join([f"• {topic} - {count} голос(ов)" for topic, count in unscheduled_vote_counts])
         schedule_text += f"\n{unscheduled_text}"
@@ -591,7 +596,7 @@ async def secret(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user = await context.bot.get_chat(int(user_id))
             name = user.full_name or user.username or f"ID: {user_id}"
             message.append(f"Пользователь {name} выбрал:\n" + "\n".join(f"• {t}" for t in topics))
-        except Exception:
+        except (BadRequest, Exception):
             message.append(f"ID: {user_id} выбрал:\n" + "\n".join(f"• {t}" for t in topics))
     await update.message.reply_text("\n\n".join(message))
 
