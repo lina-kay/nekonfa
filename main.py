@@ -174,6 +174,8 @@ async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
+    if "votes" not in context.bot_data:
+        context.bot_data["votes"] = {}
     command = update.message.text.strip().lower()
     if command == '/vote':
         if str(user_id) in context.bot_data.get("votes", {}):
@@ -221,6 +223,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     selected_data = query.data
     user_data = context.user_data
     bot = context.bot
+
+    # Проверка на наличие votes в bot_data
+    if "votes" not in context.bot_data:
+        context.bot_data["votes"] = {} 
 
     if selected_data == "submit_votes":
         if "vote_selection" not in user_data:
@@ -313,6 +319,11 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message_thread_id = update.effective_message.message_thread_id if update.effective_message else None
+    try:
+    user = await context.bot.get_chat(int(user_id))
+    except Exception as e:
+    logger.error(f"Ошибка при получении данных пользователя {user_id}: {e}")
+    username = f"ID: {user_id}"
     num_rooms = context.bot_data.get('num_rooms', 3)
     num_slots = context.bot_data.get('num_slots', 4)
     room_names = context.bot_data.get('room_names', [f"Зал {i +1}" for i in range(num_rooms)])
@@ -648,6 +659,20 @@ def main() -> None:
         .persistence(persistence)
         .build()
     )
+
+    # Инициализация всех необходимых ключей в bot_data
+    required_keys = {
+        "votes": {},
+        "topics": [],
+        "num_rooms": 3,
+        "num_slots": 4,
+        "max_votes": 4,
+        "room_names": [],
+        "booked_slots": {}
+    }
+    for key, default in required_keys.items():
+        if key not in application.bot_data:
+            application.bot_data[key] = default
 
     #  Define conversation handlers first
     book_slot_conv_handler = ConversationHandler(
