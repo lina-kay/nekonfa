@@ -215,10 +215,9 @@ async def send_vote_message(user_id: int, context: ContextTypes.DEFAULT_TYPE) ->
     selected = context.user_data.get("vote_selection", [])
     topics = context.bot_data.get("topics", [])
     max_votes = context.bot_data.get('max_votes', 4)
-    keyboard = [
-        [InlineKeyboardButton(f"{'✅ ' if t in selected else ''}{t}", callback_data=str(i))]
-        for i, t in enumerate(topics)
-    ]
+    keyboard = []
+    for i, t in enumerate(topics):
+        keyboard.append([InlineKeyboardButton(f"{'✅ ' if t in selected else ''}{t}", callback_data=str(i))])
     keyboard.append([InlineKeyboardButton("Отправить", callback_data="submit_votes")])
     keyboard.append([InlineKeyboardButton("Спикеры и Темы", url=TOPICS_CHAT)])
     await context.bot.send_message(
@@ -262,9 +261,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user_data['remove_selection'].remove(selected_topic)
         else:
             user_data['remove_selection'].append(selected_topic)
-        keyboard = [
-            [InlineKeyboardButton(f"{'✅ ' if t in user_data['remove_selection'] else ''}{t}", callback_data=f"rem_{i}") for i, t in enumerate(topics)]
-        ]
+        keyboard = []
+        for i, t in enumerate(topics):
+            checked = '✅ ' if t in user_data['remove_selection'] else ''
+            keyboard.append([InlineKeyboardButton(f"{checked}{t}", callback_data=f"rem_{i}")])
         keyboard.append([InlineKeyboardButton("Отправить", callback_data="submit_remove")])
         keyboard.append([InlineKeyboardButton("Отмена", callback_data="cancel_remove")])
         await query.edit_message_reply_markup(InlineKeyboardMarkup(keyboard))
@@ -294,9 +294,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 user_data["vote_selection"].append(topic)
             else:
                 await query.answer("Превышен лимит.", show_alert=True)
-        keyboard = [
-            [InlineKeyboardButton(f"{'✅ ' if t in user_data['vote_selection'] else ''}{t}", callback_data=str(i)) for i, t in enumerate(topics)]
-        ]
+        keyboard = []
+        for i, t in enumerate(topics):
+            checked = '✅ ' if t in user_data["vote_selection"] else ''
+            keyboard.append([InlineKeyboardButton(f"{checked}{t}", callback_data=str(i))])
         keyboard.append([InlineKeyboardButton("Отправить", callback_data="submit_votes")])
         keyboard.append([InlineKeyboardButton("Спикеры и Темы", url=TOPICS_CHAT)])
         await query.edit_message_reply_markup(InlineKeyboardMarkup(keyboard))
@@ -396,7 +397,9 @@ async def done_adding_topics(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def remove_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     topics = context.bot_data.get("topics", [])
-    keyboard = [[InlineKeyboardButton(t, callback_data=f"rem_{i}") for i, t in enumerate(topics)]]
+    keyboard = []
+    for i, t in enumerate(topics):
+        keyboard.append([InlineKeyboardButton(t, callback_data=f"rem_{i}")])
     keyboard.append([InlineKeyboardButton("Отправить", callback_data="submit_remove")])
     keyboard.append([InlineKeyboardButton("Отмена", callback_data="cancel_remove")])
     await update.message.reply_text("Выберите темы для удаления:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -443,7 +446,9 @@ async def book_slot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_data = context.user_data
     user_data.clear()
     room_names = context.bot_data.get('room_names', [f"Зал {i+1}" for i in range(context.bot_data.get('num_rooms', 3))])
-    keyboard = [[InlineKeyboardButton(r, callback_data=r)] for r in room_names]
+    keyboard = []
+    for room in room_names:
+        keyboard.append([InlineKeyboardButton(room, callback_data=room)])
     await update.message.reply_text("Выберите зал:", reply_markup=InlineKeyboardMarkup(keyboard))
     return ROOM_SELECTION
 
@@ -452,7 +457,9 @@ async def book_slot_room_selection(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     context.user_data['selected_room'] = query.data
     num_slots = context.bot_data.get('num_slots', 4)
-    keyboard = [[InlineKeyboardButton(f"Слот {i+1}", callback_data=str(i+1))] for i in range(num_slots)]
+    keyboard = []
+    for slot in range(1, num_slots+1):
+        keyboard.append([InlineKeyboardButton(f"Слот {slot}", callback_data=str(slot))])
     await query.edit_message_text("Выберите слот:", reply_markup=InlineKeyboardMarkup(keyboard))
     return SLOT_SELECTION
 
