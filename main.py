@@ -519,6 +519,7 @@ async def add_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['name'] = update.message.text.strip()
     keyboard = [
+        [InlineKeyboardButton("Поделиться", callback_data='поделиться')],
         [InlineKeyboardButton("Создать", callback_data='создать')],
         [InlineKeyboardButton("Обсудить", callback_data='обсудить')],
         [InlineKeyboardButton("Объединиться", callback_data='объединиться')]
