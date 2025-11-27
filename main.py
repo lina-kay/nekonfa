@@ -148,7 +148,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     num_rooms = bot_data.get('num_rooms', 3)
     num_slots = bot_data.get('num_slots', 4)
     room_names = bot_data.get('room_names', [f"Зал {i+1}" for i in range(num_rooms)])
-    booked_slots = bot_data.get('booked_slots', {})
+    booked_slots = normalize_booked_slots(bot_data)
     all_votes = []
     for votes in bot_data.get("votes", {}).values():
         all_votes.extend(votes)
@@ -160,21 +160,26 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     total = sum(vote_count.values())
     schedule = {room: [] for room in room_names}
     topic_index = 0
-    for room in room_names:
-        for slot in range(1, num_slots+1):
-            if room in booked_slots and slot in booked_slots[room]:
-                schedule[room].append("Забронировано")
+    for slot in range(1, num_slots + 1):
+        for room in room_names:
+            room_bookings = booked_slots.get(room, {})
+            if slot in room_bookings:
+                schedule[room].append(room_bookings[slot])
             else:
                 if topic_index < len(sorted_votes):
                     schedule[room].append(sorted_votes[topic_index][0])
-                    topic_index +=1
+                    topic_index += 1
                 else:
                     schedule[room].append("Пусто")
     schedule_text = "<b>Расписание:</b>\n"
     for room, slots in schedule.items():
         schedule_text += f"\n{room}:\n"
+        room_bookings = booked_slots.get(room, {})
         for i, s in enumerate(slots, 1):
-            schedule_text += f"Слот {i}: {s}\n"
+            if i in room_bookings:
+                schedule_text += f"Слот {i}: {room_bookings[i]} (забронирован)\n"
+            else:
+                schedule_text += f"Слот {i}: {s}\n"
 
     unscheduled_topics = sorted_votes[topic_index:]
     if unscheduled_topics:
