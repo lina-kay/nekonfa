@@ -63,8 +63,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             vote_url = f"https://t.me/{bot_username}?start=vote"
             add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
-            topics_chat_url = f"https://t.me/{TOPICS_CHAT}"
-            voting_chat_url = f"https://t.me/{VOTING_CHAT}"
+            topics_chat_url = f"{TOPICS_CHAT}"
+            voting_chat_url = f"{VOTING_CHAT}"
             
             keyboard = [
                 [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
@@ -86,8 +86,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             arg = f"{chat_id}"
         vote_url = f"https://t.me/{bot_username}?start=vote_{arg}"
         add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
-        topics_chat_url = f"https://t.me/{TOPICS_CHAT}"
-        voting_chat_url = f"https://t.me/{VOTING_CHAT}"
+        topics_chat_url = f"{TOPICS_CHAT}"
+        voting_chat_url = f"{VOTING_CHAT}"
         
         keyboard = [
             [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
@@ -177,9 +177,8 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     topic_index = 0
     for slot in range(1, num_slots + 1):
         for room in room_names:
-            room_bookings = booked_slots.get(room, {})
-            if slot in room_bookings:
-                schedule[room].append(room_bookings[slot])
+            if room in booked_slots and slot in booked_slots[room]:
+                schedule[room].append("Забронировано")
             else:
                 if topic_index < len(sorted_votes):
                     schedule[room].append(sorted_votes[topic_index][0])
