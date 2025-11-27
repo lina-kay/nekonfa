@@ -160,8 +160,8 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     total = sum(vote_count.values())
     schedule = {room: [] for room in room_names}
     topic_index = 0
-    for room in room_names:
-        for slot in range(1, num_slots+1):
+    for slot in range(1, num_slots + 1):
+        for room in room_names:
             if room in booked_slots and slot in booked_slots[room]:
                 schedule[room].append("Забронировано")
             else:
