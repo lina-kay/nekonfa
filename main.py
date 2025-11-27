@@ -23,8 +23,20 @@ if not TOKEN or not TOPICS_CHAT or not VOTING_CHAT:
 
 persistence = PicklePersistence(filepath=PERSISTENCE_PATH)
 
-ROOM_SELECTION, SLOT_SELECTION = range(2)
-ADD_NAME, ADD_CATEGORY, ADD_TOPIC = range(3)
+ROOM_SELECTION, SLOT_SELECTION, NAME_ROOM_SELECTION, NAME_SLOT_SELECTION, NAME_INPUT = range(5)
+ADD_NAME, ADD_CATEGORY, ADD_TOPIC = range(5, 8)
+
+def normalize_booked_slots(bot_data: dict) -> dict:
+    """
+    Ensure booked_slots stored as {room: {slot_number: name}}.
+    Older data might be lists of slot numbers, so convert on the fly.
+    """
+    booked_slots = bot_data.get('booked_slots', {})
+    for room, slots in list(booked_slots.items()):
+        if isinstance(slots, list):
+            booked_slots[room] = {slot_num: "Забронировано" for slot_num in slots}
+    bot_data['booked_slots'] = booked_slots
+    return booked_slots
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot = context.bot
@@ -100,7 +112,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     room_names = bot_data.get('room_names', [])
     votes = bot_data.get("votes", {})
     num_voters = len(votes)
-    booked_slots = bot_data.get('booked_slots', {})
+    booked_slots = normalize_booked_slots(bot_data)
 
     admin_message = (
         "<b>Команды для организаторов:</b>\n\n"
@@ -138,7 +150,10 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if booked_slots:
         booked_info = "\n<b>Забронированные слоты:</b>\n"
         for room, slots in booked_slots.items():
-            booked_info += f"<b>{room}:</b> {', '.join(map(str, slots))}\n"
+            slot_descriptions = ", ".join(
+                f"{slot}: {name}" for slot, name in sorted(slots.items())
+            )
+            booked_info += f"<b>{room}:</b> {slot_descriptions}\n"
         admin_message += booked_info
     await update.message.reply_text(text=admin_message, parse_mode='HTML', message_thread_id=message_thread_id)
 
@@ -148,7 +163,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     num_rooms = bot_data.get('num_rooms', 3)
     num_slots = bot_data.get('num_slots', 4)
     room_names = bot_data.get('room_names', [f"Зал {i+1}" for i in range(num_rooms)])
-    booked_slots = bot_data.get('booked_slots', {})
+    booked_slots = normalize_booked_slots(bot_data)
     all_votes = []
     for votes in bot_data.get("votes", {}).values():
         all_votes.extend(votes)
@@ -162,8 +177,9 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     topic_index = 0
     for slot in range(1, num_slots + 1):
         for room in room_names:
-            if room in booked_slots and slot in booked_slots[room]:
-                schedule[room].append("Забронировано")
+            room_bookings = booked_slots.get(room, {})
+            if slot in room_bookings:
+                schedule[room].append(room_bookings[slot])
             else:
                 if topic_index < len(sorted_votes):
                     schedule[room].append(sorted_votes[topic_index][0])
@@ -496,11 +512,10 @@ async def book_slot_slot_selection(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     selected_slot = int(query.data)
     room = context.user_data['selected_room']
-    booked_slots = context.bot_data.get('booked_slots', {})
-    if room not in booked_slots:
-        booked_slots[room] = []
-    if selected_slot not in booked_slots[room]:
-        booked_slots[room].append(selected_slot)
+    booked_slots = normalize_booked_slots(context.bot_data)
+    room_bookings = booked_slots.setdefault(room, {})
+    if selected_slot not in room_bookings:
+        room_bookings[selected_slot] = "Забронировано"
         context.bot_data['booked_slots'] = booked_slots
         await query.edit_message_text(f"Слот {selected_slot} в {room} забронирован.")
     else:
@@ -509,6 +524,77 @@ async def book_slot_slot_selection(update: Update, context: ContextTypes.DEFAULT
 
 async def book_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Бронирование отменено.")
+    return ConversationHandler.END
+
+async def name_slot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    booked_slots = normalize_booked_slots(context.bot_data)
+    if not booked_slots:
+        await update.message.reply_text("Нет забронированных слотов для переименования.")
+        return ConversationHandler.END
+    keyboard = [
+        [InlineKeyboardButton(room, callback_data=room)]
+        for room in booked_slots.keys()
+    ]
+    await update.message.reply_text(
+        "Выберите зал с забронированными слотами:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return NAME_ROOM_SELECTION
+
+async def name_slot_room_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    room = query.data
+    booked_slots = normalize_booked_slots(context.bot_data)
+    room_bookings = booked_slots.get(room)
+    if not room_bookings:
+        await query.edit_message_text("В этом зале нет забронированных слотов.")
+        return ConversationHandler.END
+    context.user_data['naming_room'] = room
+    keyboard = [
+        [InlineKeyboardButton(f"Слот {slot}: {name}", callback_data=str(slot))]
+        for slot, name in sorted(room_bookings.items())
+    ]
+    await query.edit_message_text(
+        "Выберите слот, которому нужно задать название:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return NAME_SLOT_SELECTION
+
+async def name_slot_slot_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    context.user_data['naming_slot'] = int(query.data)
+    room = context.user_data.get('naming_room')
+    await query.edit_message_text(f"Введите новое название для {room}, слот {query.data}:")
+    return NAME_INPUT
+
+async def set_slot_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    room = context.user_data.get('naming_room')
+    slot = context.user_data.get('naming_slot')
+    if room is None or slot is None:
+        await update.message.reply_text("Слот не выбран. Начните заново с /nameslot.")
+        return ConversationHandler.END
+    new_name = update.message.text.strip()
+    if not new_name:
+        await update.message.reply_text("Название не может быть пустым. Введите другое значение.")
+        return NAME_INPUT
+    booked_slots = normalize_booked_slots(context.bot_data)
+    room_bookings = booked_slots.get(room, {})
+    if slot not in room_bookings:
+        await update.message.reply_text("Этот слот больше не забронирован.")
+        return ConversationHandler.END
+    room_bookings[slot] = new_name
+    context.bot_data['booked_slots'] = booked_slots
+    await update.message.reply_text(f"Слот {slot} в {room} теперь называется: {new_name}")
+    context.user_data.pop('naming_room', None)
+    context.user_data.pop('naming_slot', None)
+    return ConversationHandler.END
+
+async def name_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data.pop('naming_room', None)
+    context.user_data.pop('naming_slot', None)
+    await update.message.reply_text("Переименование отменено.")
     return ConversationHandler.END
 
 async def add_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -572,6 +658,16 @@ def main() -> None:
             },
             fallbacks=[CommandHandler('cancel', book_slot_cancel)],
             name="book_slot"
+        ),
+        ConversationHandler(
+            entry_points=[CommandHandler('nameslot', name_slot_start)],
+            states={
+                NAME_ROOM_SELECTION: [CallbackQueryHandler(name_slot_room_selection)],
+                NAME_SLOT_SELECTION: [CallbackQueryHandler(name_slot_slot_selection)],
+                NAME_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_slot_name)]
+            },
+            fallbacks=[CommandHandler('cancel', name_slot_cancel)],
+            name="name_slot"
         ),
         ConversationHandler(
             entry_points=[CommandHandler('addtopicuser', add_topic_user), MessageHandler(filters.Regex("^/start addtopicuser$"), add_topic_user)],
