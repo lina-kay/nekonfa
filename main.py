@@ -189,8 +189,12 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     schedule_text = "<b>Расписание:</b>\n"
     for room, slots in schedule.items():
         schedule_text += f"\n{room}:\n"
+        room_bookings = booked_slots.get(room, {})
         for i, s in enumerate(slots, 1):
-            schedule_text += f"Слот {i}: {s}\n"
+            if i in room_bookings:
+                schedule_text += f"{room_bookings[i]}\n"
+            else:
+                schedule_text += f"Слот {i}: {s}\n"
 
     unscheduled_topics = sorted_votes[topic_index:]
     if unscheduled_topics:
