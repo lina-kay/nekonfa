@@ -51,8 +51,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             vote_url = f"https://t.me/{bot_username}?start=vote"
             add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
-            topics_chat_url = f"https://t.me/{TOPICS_CHAT}"
-            voting_chat_url = f"https://t.me/{VOTING_CHAT}"
+            topics_chat_url = f"{TOPICS_CHAT}"
+            voting_chat_url = f"{VOTING_CHAT}"
             
             keyboard = [
                 [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
