@@ -1,6 +1,7 @@
 import os
 import logging
 from collections import Counter
+from dotenv import load_dotenv
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -11,12 +12,12 @@ from telegram.error import BadRequest
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+load_dotenv()
 TOKEN = os.getenv('TOKEN')
 TOPICS_CHAT = os.getenv('TOPICS_CHAT')
 VOTING_CHAT = os.getenv('VOTING_CHAT')
 PERSISTENCE_PATH = os.getenv('PERSISTENCE_PATH', 'bot_data.pkl')
-
+print("TOKEN:", TOKEN, "TOPICS_CHAT:", TOPICS_CHAT, "VOTING_CHAT:", VOTING_CHAT)
 if not TOKEN or not TOPICS_CHAT or not VOTING_CHAT:
     logger.error("Ошибка: не все переменные окружения установлены.")
     exit(1)
