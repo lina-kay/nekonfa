@@ -11,4 +11,4 @@ urllib3
 # Logging and runtime utilities (safe defaults)
 aiohttp
 
- python-dotenv
+python-dotenv
