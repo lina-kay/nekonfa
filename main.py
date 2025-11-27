@@ -183,7 +183,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             else:
                 if topic_index < len(sorted_votes):
                     schedule[room].append(sorted_votes[topic_index][0])
-                    topic_index +=1
+                    topic_index += 1
                 else:
                     schedule[room].append("Пусто")
     schedule_text = "<b>Расписание:</b>\n"
