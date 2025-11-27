@@ -1,6 +1,7 @@
 import os
 import logging
 from collections import Counter
+from dotenv import load_dotenv
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -11,20 +12,32 @@ from telegram.error import BadRequest
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+load_dotenv()
 TOKEN = os.getenv('TOKEN')
 TOPICS_CHAT = os.getenv('TOPICS_CHAT')
 VOTING_CHAT = os.getenv('VOTING_CHAT')
 PERSISTENCE_PATH = os.getenv('PERSISTENCE_PATH', 'bot_data.pkl')
-
+print("TOKEN:", TOKEN, "TOPICS_CHAT:", TOPICS_CHAT, "VOTING_CHAT:", VOTING_CHAT)
 if not TOKEN or not TOPICS_CHAT or not VOTING_CHAT:
     logger.error("Ошибка: не все переменные окружения установлены.")
     exit(1)
 
 persistence = PicklePersistence(filepath=PERSISTENCE_PATH)
 
-ROOM_SELECTION, SLOT_SELECTION = range(2)
-ADD_NAME, ADD_CATEGORY, ADD_TOPIC = range(3)
+ROOM_SELECTION, SLOT_SELECTION, NAME_ROOM_SELECTION, NAME_SLOT_SELECTION, NAME_INPUT = range(5)
+ADD_NAME, ADD_CATEGORY, ADD_TOPIC = range(5, 8)
+
+def normalize_booked_slots(bot_data: dict) -> dict:
+    """
+    Store booked slots as {room: {slot_number: custom_name}} for easier processing.
+    Legacy data might keep plain lists, so convert them on the fly.
+    """
+    booked_slots = normalize_booked_slots(bot_data)
+    for room, slots in list(booked_slots.items()):
+        if isinstance(slots, list):
+            booked_slots[room] = {slot_num: "Забронировано" for slot_num in slots}
+    bot_data['booked_slots'] = booked_slots
+    return booked_slots
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot = context.bot
@@ -138,7 +151,10 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if booked_slots:
         booked_info = "\n<b>Забронированные слоты:</b>\n"
         for room, slots in booked_slots.items():
-            booked_info += f"<b>{room}:</b> {', '.join(map(str, slots))}\n"
+            slot_descriptions = ", ".join(
+                f"{slot}: {name}" for slot, name in sorted(slots.items())
+            )
+            booked_info += f"<b>{room}:</b> {slot_descriptions}\n"
         admin_message += booked_info
     await update.message.reply_text(text=admin_message, parse_mode='HTML', message_thread_id=message_thread_id)
 
@@ -148,7 +164,7 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     num_rooms = bot_data.get('num_rooms', 3)
     num_slots = bot_data.get('num_slots', 4)
     room_names = bot_data.get('room_names', [f"Зал {i+1}" for i in range(num_rooms)])
-    booked_slots = bot_data.get('booked_slots', {})
+    booked_slots = normalize_booked_slots(bot_data)
     all_votes = []
     for votes in bot_data.get("votes", {}).values():
         all_votes.extend(votes)
@@ -160,21 +176,26 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     total = sum(vote_count.values())
     schedule = {room: [] for room in room_names}
     topic_index = 0
-    for room in room_names:
-        for slot in range(1, num_slots+1):
-            if room in booked_slots and slot in booked_slots[room]:
-                schedule[room].append("Забронировано")
+    for slot in range(1, num_slots + 1):
+        for room in room_names:
+            room_bookings = booked_slots.get(room, {})
+            if slot in room_bookings:
+                schedule[room].append(room_bookings[slot])
             else:
                 if topic_index < len(sorted_votes):
                     schedule[room].append(sorted_votes[topic_index][0])
-                    topic_index +=1
+                    topic_index += 1
                 else:
                     schedule[room].append("Пусто")
     schedule_text = "<b>Расписание:</b>\n"
     for room, slots in schedule.items():
         schedule_text += f"\n{room}:\n"
+        room_bookings = booked_slots.get(room, {})
         for i, s in enumerate(slots, 1):
-            schedule_text += f"Слот {i}: {s}\n"
+            if i in room_bookings:
+                schedule_text += f"Слот {i}: {room_bookings[i]} - забронирован\n"
+            else:
+                schedule_text += f"Слот {i}: {s}\n"
 
     unscheduled_topics = sorted_votes[topic_index:]
     if unscheduled_topics:
@@ -496,11 +517,10 @@ async def book_slot_slot_selection(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     selected_slot = int(query.data)
     room = context.user_data['selected_room']
-    booked_slots = context.bot_data.get('booked_slots', {})
-    if room not in booked_slots:
-        booked_slots[room] = []
-    if selected_slot not in booked_slots[room]:
-        booked_slots[room].append(selected_slot)
+    booked_slots = normalize_booked_slots(context.bot_data)
+    room_bookings = booked_slots.setdefault(room, {})
+    if selected_slot not in room_bookings:
+        room_bookings[selected_slot] = f"Слот {selected_slot}"
         context.bot_data['booked_slots'] = booked_slots
         await query.edit_message_text(f"Слот {selected_slot} в {room} забронирован.")
     else:
@@ -509,6 +529,77 @@ async def book_slot_slot_selection(update: Update, context: ContextTypes.DEFAULT
 
 async def book_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Бронирование отменено.")
+    return ConversationHandler.END
+
+async def name_slot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    booked_slots = normalize_booked_slots(context.bot_data)
+    if not booked_slots:
+        await update.message.reply_text("Нет забронированных слотов.")
+        return ConversationHandler.END
+    keyboard = [
+        [InlineKeyboardButton(room, callback_data=room)]
+        for room in booked_slots.keys()
+    ]
+    await update.message.reply_text(
+        "Выберите зал с забронированными слотами:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return NAME_ROOM_SELECTION
+
+async def name_slot_room_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    room = query.data
+    booked_slots = normalize_booked_slots(context.bot_data)
+    room_bookings = booked_slots.get(room)
+    if not room_bookings:
+        await query.edit_message_text("В этом зале нет забронированных слотов.")
+        return ConversationHandler.END
+    context.user_data['naming_room'] = room
+    keyboard = [
+        [InlineKeyboardButton(f"Слот {slot}: {name}", callback_data=str(slot))]
+        for slot, name in sorted(room_bookings.items())
+    ]
+    await query.edit_message_text(
+        "Выберите слот для переименования:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return NAME_SLOT_SELECTION
+
+async def name_slot_slot_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    context.user_data['naming_slot'] = int(query.data)
+    room = context.user_data.get('naming_room', '')
+    await query.edit_message_text(f"Введите новое название для {room}, слот {query.data}:")
+    return NAME_INPUT
+
+async def set_slot_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    room = context.user_data.get('naming_room')
+    slot = context.user_data.get('naming_slot')
+    if room is None or slot is None:
+        await update.message.reply_text("Слот не выбран. Начните заново с /nameslot.")
+        return ConversationHandler.END
+    new_name = update.message.text.strip()
+    if not new_name:
+        await update.message.reply_text("Название не может быть пустым. Введите другое значение.")
+        return NAME_INPUT
+    booked_slots = normalize_booked_slots(context.bot_data)
+    room_bookings = booked_slots.get(room, {})
+    if slot not in room_bookings:
+        await update.message.reply_text("Этот слот больше не забронирован.")
+        return ConversationHandler.END
+    room_bookings[slot] = new_name
+    context.bot_data['booked_slots'] = booked_slots
+    await update.message.reply_text(f"Слот {slot} в {room} теперь называется: {new_name}")
+    context.user_data.pop('naming_room', None)
+    context.user_data.pop('naming_slot', None)
+    return ConversationHandler.END
+
+async def name_slot_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data.pop('naming_room', None)
+    context.user_data.pop('naming_slot', None)
+    await update.message.reply_text("Переименование отменено.")
     return ConversationHandler.END
 
 async def add_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -572,6 +663,16 @@ def main() -> None:
             },
             fallbacks=[CommandHandler('cancel', book_slot_cancel)],
             name="book_slot"
+        ),
+        ConversationHandler(
+            entry_points=[CommandHandler('nameslot', name_slot_start)],
+            states={
+                NAME_ROOM_SELECTION: [CallbackQueryHandler(name_slot_room_selection)],
+                NAME_SLOT_SELECTION: [CallbackQueryHandler(name_slot_slot_selection)],
+                NAME_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_slot_name)]
+            },
+            fallbacks=[CommandHandler('cancel', name_slot_cancel)],
+            name="name_slot"
         ),
         ConversationHandler(
             entry_points=[CommandHandler('addtopicuser', add_topic_user), MessageHandler(filters.Regex("^/start addtopicuser$"), add_topic_user)],
