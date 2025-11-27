@@ -64,8 +64,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             vote_url = f"https://t.me/{bot_username}?start=vote"
             add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
-            topics_chat_url = f"https://t.me/{TOPICS_CHAT}"
-            voting_chat_url = f"https://t.me/{VOTING_CHAT}"
+            topics_chat_url = f"{TOPICS_CHAT}"
+            voting_chat_url = f"{VOTING_CHAT}"
             
             keyboard = [
                 [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
@@ -87,8 +87,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             arg = f"{chat_id}"
         vote_url = f"https://t.me/{bot_username}?start=vote_{arg}"
         add_topic_url = f"https://t.me/{bot_username}?start=addtopicuser"
-        topics_chat_url = f"https://t.me/{TOPICS_CHAT}"
-        voting_chat_url = f"https://t.me/{VOTING_CHAT}"
+        topics_chat_url = f"{TOPICS_CHAT}"
+        voting_chat_url = f"{VOTING_CHAT}"
         
         keyboard = [
             [InlineKeyboardButton("Перейти к голосованию", url=vote_url)],
@@ -113,7 +113,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     room_names = bot_data.get('room_names', [])
     votes = bot_data.get("votes", {})
     num_voters = len(votes)
-    booked_slots = bot_data.get('booked_slots', {})
+    booked_slots = normalize_booked_slots(bot_data)
 
     admin_message = (
         "<b>Команды для организаторов:</b>\n\n"
@@ -127,7 +127,8 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/setvotes - Установить количество доступных голосов\n"
         "/namerooms - Установить названия залов\n\n"
         "<b>Бронирование слотов</b>\n"
-        "/bookslot - Забронировать слот в зале\n\n"
+        "/bookslot - Забронировать слот в зале\n"
+        "/nameslot - Назвать забронированный слот в зале\n\n"
         "<b>Очистка данных</b>\n"
         "/clearvotes - Очистить голоса\n"
         "/cleartopics - Очистить все сохранённые темы\n"
