@@ -236,6 +236,31 @@ async def receive_room_names(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     command = update.message.text.strip().lower()
+
+    # Проверяем статус по bot_data['votes'], а не по user_data
+    if command == '/vote':
+        if str(user_id) in context.bot_data.get("votes", {}):
+            await update.message.reply_text("Вы уже проголосовали. Используйте /changevote для изменения.")
+            return
+    elif command == '/changevote':
+        if str(user_id) not in context.bot_data.get("votes", {}):
+            await update.message.reply_text("Вы не голосовали. Используйте /vote для голосования.")
+            return
+
+    topics = context.bot_data.get("topics", [])
+    if not topics:
+        await update.message.reply_text("Нет доступных тем.")
+        return
+
+    # ВАЖНО: сначала сбрасываем выбор пользователя на то, что лежит в votes
+    # (или на пустой список, если голосов нет)
+    context.user_data["vote_selection"] = context.bot_data.get("votes", {}).get(str(user_id), []).copy()
+
+    # Больше НЕ проверяем current_votes здесь — лимит и так контролируется в callback'ах
+    await send_vote_message(user_id, context)
+
+    user_id = update.effective_user.id
+    command = update.message.text.strip().lower()
     if command == '/vote':
         if str(user_id) in context.bot_data.get("votes", {}):
             await update.message.reply_text("Вы уже проголосовали. Используйте /changevote для изменения.")
