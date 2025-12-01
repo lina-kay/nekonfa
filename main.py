@@ -140,6 +140,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "<b>Составление расписания</b>\n"
         "/finalize - Завершить голосование и показать результаты\n"
         "/countvotes - Показать количество участников, проголосовавших за темы\n"
+        "/stats - Показать статистику голосов по темам\n"
         "/secret - Показать подробную статистику голосования\n\n"
         "<b>Текущие настройки:</b>\n"
         f"Количество залов: {num_rooms}\n"
@@ -188,6 +189,10 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     topic_index += 1
                 else:
                     schedule[room].append("Пусто")
+    def format_topic(name: str) -> str:
+        count = vote_count.get(name)
+        return f"{name} ({count} голосов)" if count is not None else name
+
     schedule_text = "<b>Расписание:</b>\n"
     for room, slots in schedule.items():
         schedule_text += f"\n{room}:\n"
@@ -195,9 +200,9 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         for i, s in enumerate(slots, 1):
             if i in room_bookings:
                 display_name = room_bookings[i] or "Забронировано"
-                schedule_text += f"Слот {i}: {display_name} - забронирован\n"
+                schedule_text += f"Слот {i}: {display_name}\n"
             else:
-                schedule_text += f"Слот {i}: {s}\n"
+                schedule_text += f"Слот {i}: {format_topic(s)}\n"
 
     unscheduled_topics = sorted_votes[topic_index:]
     if unscheduled_topics:
@@ -471,6 +476,21 @@ async def count_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     num = len(context.bot_data.get("votes", {}))
     await update.message.reply_text(f"Проголосовало: {num} человек")
 
+async def topic_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message_thread_id = update.effective_message.message_thread_id if update.effective_message else None
+    topics = context.bot_data.get("topics", [])
+    votes = context.bot_data.get("votes", {})
+    if not topics and not votes:
+        await update.message.reply_text("Нет данных для статистики.", message_thread_id=message_thread_id)
+        return
+    counts = Counter()
+    for user_topics in votes.values():
+        counts.update(user_topics)
+    all_topics = set(topics) | set(counts.keys())
+    sorted_topics = sorted(all_topics, key=lambda t: (-counts.get(t, 0), t.lower()))
+    stats_lines = [f"{idx}. {topic} — {counts.get(topic, 0)} голосов" for idx, topic in enumerate(sorted_topics, 1)]
+    await update.message.reply_text("\n".join(stats_lines), message_thread_id=message_thread_id)
+
 async def topic_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     topics = context.bot_data.get("topics", [])
     if topics:
@@ -704,6 +724,7 @@ def main() -> None:
     app.add_handler(CommandHandler('setslots', set_slots))
     app.add_handler(CommandHandler('setvotes', set_votes))
     app.add_handler(CommandHandler('clearvotes', clear_votes))
+    app.add_handler(CommandHandler('stats', topic_stats))
     app.add_handler(CommandHandler('cleartopics', clear_topics))
     app.add_handler(CommandHandler('countvotes', count_votes))
     app.add_handler(CommandHandler('topiclist', topic_list))
