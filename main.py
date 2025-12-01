@@ -180,7 +180,10 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     vote_count = Counter(all_votes)
     for topic in topics:
         vote_count.setdefault(topic, 0)
-    sorted_votes = sorted(vote_count.items(), key=lambda x: (-x[1], str(x[0]).lower()))
+    voted_topics = [(t, c) for t, c in vote_count.items() if c > 0]
+    zero_topics = [(t, c) for t, c in vote_count.items() if c == 0]
+    prioritized_topics = sorted(voted_topics, key=lambda x: (-x[1], str(x[0]).lower()))
+    zero_sorted = sorted(zero_topics, key=lambda x: str(x[0]).lower())
     schedule = {room: [] for room in room_names}
     topic_index = 0
     for slot in range(1, num_slots + 1):
@@ -189,8 +192,8 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             if slot in room_bookings:
                 schedule[room].append(room_bookings[slot] or "Забронировано")
             else:
-                if topic_index < len(sorted_votes):
-                    schedule[room].append(sorted_votes[topic_index][0])
+                if topic_index < len(prioritized_topics):
+                    schedule[room].append(prioritized_topics[topic_index][0])
                     topic_index += 1
                 else:
                     schedule[room].append("Пусто")
@@ -209,9 +212,9 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             else:
                 schedule_text += f"Слот {i}: {format_topic(s)}\n"
 
-    unscheduled_topics = sorted_votes[topic_index:]
+    unscheduled_topics = prioritized_topics[topic_index:] + zero_sorted
     if unscheduled_topics:
-        unscheduled_text = "\n\n<b>Приоритетные темы вне расписания:</b>\n"
+        unscheduled_text = "\n\n<b>Темы вне расписания:</b>\n"
         for topic, count in unscheduled_topics:
             unscheduled_text += f"• {topic} ({count} голосов)\n"
     else:
