@@ -39,6 +39,12 @@ def normalize_booked_slots(bot_data: dict) -> dict:
     bot_data['booked_slots'] = booked_slots
     return booked_slots
 
+def reset_vote_state(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove cached vote selections from all users to avoid stale limits."""
+    for data in context.application.user_data.values():
+        data.pop("vote_selection", None)
+        data.pop("remove_selection", None)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot = context.bot
     bot_username = (await bot.get_me()).username
@@ -165,17 +171,16 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     bot_data = context.bot_data
     num_rooms = bot_data.get('num_rooms', 3)
     num_slots = bot_data.get('num_slots', 4)
+    topics = bot_data.get('topics', [])
     room_names = bot_data.get('room_names', [f"Зал {i+1}" for i in range(num_rooms)])
     booked_slots = normalize_booked_slots(bot_data)
     all_votes = []
     for votes in bot_data.get("votes", {}).values():
         all_votes.extend(votes)
-    if not all_votes:
-        await update.message.reply_text("Нет голосов.", message_thread_id=message_thread_id)
-        return
     vote_count = Counter(all_votes)
-    sorted_votes = sorted(vote_count.items(), key=lambda x: -x[1])
-    total = sum(vote_count.values())
+    for topic in topics:
+        vote_count.setdefault(topic, 0)
+    sorted_votes = sorted(vote_count.items(), key=lambda x: (-x[1], str(x[0]).lower()))
     schedule = {room: [] for room in room_names}
     topic_index = 0
     for slot in range(1, num_slots + 1):
@@ -274,10 +279,6 @@ async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Нет доступных тем.")
         return
     max_votes = context.bot_data.get('max_votes', 4)
-    current_votes = len(context.user_data.get("vote_selection", []))
-    if current_votes >= max_votes:
-        await update.message.reply_text(f"Вы уже выбрали максимальное количество тем ({max_votes})")
-        return
     context.user_data["vote_selection"] = context.bot_data["votes"].get(str(user_id), []).copy()
     await send_vote_message(user_id, context)
 
@@ -487,10 +488,12 @@ async def remove_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def clear_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.bot_data['votes'] = {}
+    reset_vote_state(context)
     await update.message.reply_text("Все голоса очищены.")
 
 async def clear_topics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.bot_data['topics'] = []
+    reset_vote_state(context)
     await update.message.reply_text("Все темы удалены.")
 
 async def clear_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
