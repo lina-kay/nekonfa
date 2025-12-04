@@ -186,17 +186,18 @@ async def finalize_votes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     zero_sorted = sorted(zero_topics, key=lambda x: str(x[0]).lower())
     schedule = {room: [] for room in room_names}
     topic_index = 0
-    for slot in range(1, num_slots + 1):
-        for room in room_names:
-            room_bookings = booked_slots.get(room, {})
+    # Заполняем зал за залом, а не слот за слотом, чтобы темы шли подряд по залам
+    for room in room_names:
+        room_bookings = booked_slots.get(room, {})
+        for slot in range(1, num_slots + 1):
             if slot in room_bookings:
                 schedule[room].append(room_bookings[slot] or "Забронировано")
+                continue
+            if topic_index < len(prioritized_topics):
+                schedule[room].append(prioritized_topics[topic_index][0])
+                topic_index += 1
             else:
-                if topic_index < len(prioritized_topics):
-                    schedule[room].append(prioritized_topics[topic_index][0])
-                    topic_index += 1
-                else:
-                    schedule[room].append("Пусто")
+                schedule[room].append("Пусто")
     def format_topic(name: str) -> str:
         count = vote_count.get(name)
         return f"{name} ({count} голосов)" if count is not None else name
